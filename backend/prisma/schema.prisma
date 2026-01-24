@@ -1,0 +1,565 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  DIRECTOR
+  HR_HEAD
+  MANAGER
+  EMPLOYEE
+  INTERVIEWER
+}
+
+enum EmployeeType {
+  INTERN
+  FULL_TIME
+}
+
+enum LeaveType {
+  SICK
+  CASUAL
+  EARNED
+}
+
+enum LeaveStatus {
+  PENDING_MANAGER
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  HALF_DAY
+  ABSENT
+  PAID_LEAVE
+  ABSENT_DOUBLE_DEDUCTION
+  OFFICIAL_HOLIDAY
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum ResignationStatus {
+  SUBMITTED
+  MANAGER_APPROVED
+  PENDING_HR
+  APPROVED
+  REJECTED
+  EXIT_COMPLETE
+}
+
+enum AssetStatus {
+  SUBMITTED
+  MANAGER_APPROVED
+  PENDING_HR
+  APPROVED
+  ALLOCATED
+  ACKNOWLEDGED
+  REJECTED
+}
+
+enum ReimbursementStatus {
+  SUBMITTED
+  MANAGER_APPROVED
+  PENDING_HR
+  APPROVED
+  PAYMENT_PROCESSED
+  ACKNOWLEDGED
+  REJECTED
+}
+
+enum DocumentStatus {
+  UPLOADED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum InterviewRoundStatus {
+  PASS
+  FAIL
+  ON_HOLD
+}
+
+model User {
+  id            String       @id @default(uuid())
+  email         String       @unique
+  password      String
+  role          UserRole     @default(EMPLOYEE)
+  isActive      Boolean      @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  employee      Employee?
+
+  @@map("users")
+}
+
+model Role {
+  id                    String   @id @default(uuid())
+  name                  String   @unique
+  dailyReportingParams  Json     // Array of parameters with targets
+  performanceChartConfig Json    // Chart configurations
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  createdBy             String
+
+  employees             Employee[]
+  employeeRequirements  EmployeeRequirement[]
+
+  @@map("roles")
+}
+
+model Employee {
+  id                String        @id @default(uuid())
+  userId            String        @unique
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime?
+  gender            String?
+  phone             String?
+  address           String?
+  employeeType      EmployeeType  @default(FULL_TIME)
+  salary            Float
+  roleId            String
+  managerId         String?
+  joinDate          DateTime      @default(now())
+
+  // Emergency Contact
+  emergencyContactName     String?
+  emergencyContactRelation String?
+  emergencyContactPhone    String?
+  emergencyContactEmail    String?
+
+  // Bank Details
+  bankAccountHolder String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankName          String?
+  bankBranch        String?
+
+  // Recognition
+  directorsListCount Int      @default(0)
+  totalRewardsAmount Float    @default(0)
+
+  // Leave Balance
+  sickLeaveBalance   Float    @default(0)
+  casualLeaveBalance Float    @default(0)
+  earnedLeaveBalance Float    @default(0)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              Role     @relation(fields: [roleId], references: [id])
+  manager           Employee? @relation("EmployeeManager", fields: [managerId], references: [id])
+
+  subordinates      Employee[] @relation("EmployeeManager")
+  dailyReports      DailyReport[]
+  leaves            Leave[]
+  attendance        Attendance[]
+  tickets           Ticket[] @relation("TicketCreator")
+  assignedTickets   Ticket[] @relation("TicketAssignee")
+  feedbackGiven     Feedback[] @relation("FeedbackFrom")
+  feedbackReceived  Feedback[] @relation("FeedbackTo")
+  documents         Document[]
+  documentVerifications DocumentVerification[]
+  rewards           Reward[]
+  directorListNominations DirectorList[] @relation("DirectorListNominee")
+  directorListNominator   DirectorList[] @relation("DirectorListNominator")
+  assets            AssetRequest[]
+  reimbursements    Reimbursement[]
+  resignation       Resignation?
+  payslips          Payslip[]
+  interviewerDrives PlacementDriveInterviewer[]
+  roundEvaluations  RoundEvaluation[]
+
+  @@map("employees")
+}
+
+model EmployeeRequirement {
+  id              String   @id @default(uuid())
+  roleId          String
+  minimumRequired Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  role            Role     @relation(fields: [roleId], references: [id])
+
+  @@unique([roleId])
+  @@map("employee_requirements")
+}
+
+model DailyReport {
+  id            String   @id @default(uuid())
+  employeeId    String
+  reportDate    DateTime
+  reportData    Json     // Contains parameter values based on role
+  isVerified    Boolean  @default(false)
+  verifiedBy    String?
+  verifiedAt    DateTime?
+  managerComment String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, reportDate])
+  @@map("daily_reports")
+}
+
+model Leave {
+  id              String       @id @default(uuid())
+  employeeId      String
+  leaveType       LeaveType
+  startDate       DateTime
+  endDate         DateTime
+  numberOfDays    Float
+  reason          String
+  status          LeaveStatus  @default(PENDING_MANAGER)
+  managerApproved Boolean      @default(false)
+  hrApproved      Boolean      @default(false)
+  isPaid          Boolean      @default(true)
+  rejectionReason String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("leaves")
+}
+
+model Attendance {
+  id            String           @id @default(uuid())
+  employeeId    String
+  date          DateTime
+  status        AttendanceStatus
+  checkInTime   DateTime?
+  checkOutTime  DateTime?
+  workingHours  Float?           // Calculated working hours
+  markedBy      String
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  employee      Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@map("attendance")
+}
+
+model OfficialHoliday {
+  id          String   @id @default(uuid())
+  date        DateTime @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("official_holidays")
+}
+
+model Ticket {
+  id          String       @id @default(uuid())
+  subject     String
+  description String
+  category    String?
+  createdBy   String
+  assignedTo  String
+  status      TicketStatus @default(OPEN)
+  comments    Json         @default("[]") // Array of comment objects
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  resolvedAt  DateTime?
+
+  creator     Employee     @relation("TicketCreator", fields: [createdBy], references: [id])
+  assignee    Employee     @relation("TicketAssignee", fields: [assignedTo], references: [id])
+
+  @@map("tickets")
+}
+
+model Feedback {
+  id          String   @id @default(uuid())
+  fromId      String
+  toId        String?  // Null for employee feedback to company/HR/etc
+  subject     String   // Manager, Company, HR Head, Director, Other
+  content     String
+  isConfidential Boolean @default(true)
+  createdAt   DateTime @default(now())
+
+  from        Employee @relation("FeedbackFrom", fields: [fromId], references: [id])
+  to          Employee? @relation("FeedbackTo", fields: [toId], references: [id])
+
+  @@map("feedback")
+}
+
+model Document {
+  id            String         @id @default(uuid())
+  employeeId    String
+  documentType  String         // offer_letter, appointment_letter, etc.
+  fileName      String
+  filePath      String
+  description   String?
+  releasedBy    String?
+  releasedAt    DateTime?
+  downloadCount Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  employee      Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model DocumentVerification {
+  id            String         @id @default(uuid())
+  employeeId    String
+  documentType  String
+  fileName      String
+  filePath      String
+  status        DocumentStatus @default(UPLOADED)
+  verifiedBy    String?
+  verifiedAt    DateTime?
+  rejectionReason String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  employee      Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("document_verifications")
+}
+
+model Reward {
+  id            String   @id @default(uuid())
+  employeeId    String
+  amount        Float?
+  badgeName     String?
+  reason        String
+  awardedBy     String
+  awardDate     DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("rewards")
+}
+
+model DirectorList {
+  id            String   @id @default(uuid())
+  employeeId    String
+  nominatedBy   String
+  period        String   // e.g., "2024-01" for January 2024
+  reason        String
+  isApproved    Boolean  @default(false)
+  approvedBy    String?
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  employee      Employee @relation("DirectorListNominee", fields: [employeeId], references: [id])
+  nominator     Employee @relation("DirectorListNominator", fields: [nominatedBy], references: [id])
+
+  @@map("directors_list")
+}
+
+model PlacementDrive {
+  id            String   @id @default(uuid())
+  collegeName   String
+  driveDate     DateTime
+  roles         Json     // Array of role objects with descriptions
+  createdBy     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  interviewers  PlacementDriveInterviewer[]
+  students      Student[]
+
+  @@map("placement_drives")
+}
+
+model PlacementDriveInterviewer {
+  id              String   @id @default(uuid())
+  driveId         String
+  interviewerId   String
+  assignedAt      DateTime @default(now())
+
+  drive           PlacementDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  interviewer     Employee       @relation(fields: [interviewerId], references: [id])
+
+  @@unique([driveId, interviewerId])
+  @@map("placement_drive_interviewers")
+}
+
+model Student {
+  id            String   @id @default(uuid())
+  driveId       String
+  name          String
+  email         String
+  phone         String
+  studentData   Json     // Additional student fields from Excel
+  createdAt     DateTime @default(now())
+
+  drive         PlacementDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  evaluations   RoundEvaluation[]
+
+  @@map("students")
+}
+
+model RoundEvaluation {
+  id            String                @id @default(uuid())
+  studentId     String
+  driveId       String
+  roundNumber   Int                   // 1 or 2
+  evaluatorId   String
+  status        InterviewRoundStatus
+  comments      String?
+  evaluatedAt   DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  student       Student               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  evaluator     Employee              @relation(fields: [evaluatorId], references: [id])
+
+  @@unique([studentId, roundNumber])
+  @@map("round_evaluations")
+}
+
+model AssetRequest {
+  id              String       @id @default(uuid())
+  employeeId      String
+  assetType       String
+  reason          String
+  urgency         String
+  status          AssetStatus  @default(SUBMITTED)
+  managerApproved Boolean      @default(false)
+  hrApproved      Boolean      @default(false)
+  assetSerialNo   String?
+  acknowledgedAt  DateTime?
+  rejectionReason String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("asset_requests")
+}
+
+model Reimbursement {
+  id              String              @id @default(uuid())
+  employeeId      String
+  category        String              // Travel, Food, Communication, Other
+  amount          Float
+  expenseDate     DateTime
+  description     String
+  receiptPath     String
+  status          ReimbursementStatus @default(SUBMITTED)
+  managerApproved Boolean             @default(false)
+  hrApproved      Boolean             @default(false)
+  paymentProcessedAt DateTime?
+  acknowledgedAt  DateTime?
+  rejectionReason String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  employee        Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("reimbursements")
+}
+
+model Resignation {
+  id              String            @id @default(uuid())
+  employeeId      String            @unique
+  noticePeriodDays Int
+  reason          String
+  lastWorkingDay  DateTime
+  status          ResignationStatus @default(SUBMITTED)
+  managerApproved Boolean           @default(false)
+  hrApproved      Boolean           @default(false)
+  rejectionReason String?
+  assetHandover   Boolean           @default(false)
+  accountDeactivatedAt DateTime?
+  noDueClearanceSentAt DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  employee        Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("resignations")
+}
+
+model Payslip {
+  id                String   @id @default(uuid())
+  employeeId        String
+  month             String   // Format: "2024-01"
+  baseSalary        Float
+  workingDays       Int
+  actualWorkingDays Float
+  unpaidLeaves      Float
+  unapprovedAbsences Float
+  holidaySandwich   Float
+  rewards           Float
+  reimbursements    Float
+  grossPay          Float
+  deductions        Float
+  netPay            Float
+  generatedAt       DateTime @default(now())
+  regeneratedAt     DateTime?
+
+  employee          Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, month])
+  @@map("payslips")
+}
+
+model HiringRequest {
+  id            String   @id @default(uuid())
+  requestedBy   String
+  roleId        String
+  positions     Int
+  justification String
+  urgency       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("hiring_requests")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  recipientId String
+  subject     String
+  message     String
+  type        String   // email, in-app, both
+  sentAt      DateTime?
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String
+  action      String
+  entity      String
+  entityId    String
+  changes     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@map("audit_logs")
+}
