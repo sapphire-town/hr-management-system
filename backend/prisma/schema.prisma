@@ -88,6 +88,14 @@ enum DocumentStatus {
   REJECTED
 }
 
+enum HiringRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  IN_PROGRESS
+  FILLED
+}
+
 enum InterviewRoundStatus {
   PASS
   FAIL
@@ -121,6 +129,7 @@ model Role {
 
   employees             Employee[]
   employeeRequirements  EmployeeRequirement[]
+  hiringRequests        HiringRequest[]
 
   @@map("roles")
 }
@@ -157,10 +166,10 @@ model Employee {
   directorsListCount Int      @default(0)
   totalRewardsAmount Float    @default(0)
 
-  // Leave Balance
-  sickLeaveBalance   Float    @default(0)
-  casualLeaveBalance Float    @default(0)
-  earnedLeaveBalance Float    @default(0)
+  // Leave Balance (default full year allocation for new employees)
+  sickLeaveBalance   Float    @default(12)
+  casualLeaveBalance Float    @default(12)
+  earnedLeaveBalance Float    @default(15)
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -188,6 +197,7 @@ model Employee {
   payslips          Payslip[]
   interviewerDrives PlacementDriveInterviewer[]
   roundEvaluations  RoundEvaluation[]
+  hiringRequests    HiringRequest[] @relation("HiringRequestRequester")
 
   @@map("employees")
 }
@@ -525,14 +535,21 @@ model Payslip {
 }
 
 model HiringRequest {
-  id            String   @id @default(uuid())
-  requestedBy   String
-  roleId        String
-  positions     Int
-  justification String
-  urgency       String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String              @id @default(uuid())
+  requestedBy     String
+  roleId          String
+  positions       Int
+  justification   String
+  urgency         String              // LOW, MEDIUM, HIGH, CRITICAL
+  status          HiringRequestStatus @default(PENDING)
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  requester       Employee            @relation("HiringRequestRequester", fields: [requestedBy], references: [id])
+  role            Role                @relation(fields: [roleId], references: [id])
 
   @@map("hiring_requests")
 }
@@ -562,4 +579,33 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   @@map("audit_logs")
+}
+
+model CompanySettings {
+  id                      String   @id @default(uuid())
+  companyName             String   @default("Acme Corporation")
+  workingHoursStart       String   @default("09:00")
+  workingHoursEnd         String   @default("18:00")
+  workingDays             Json     @default("[1,2,3,4,5]")
+  leavePolicies           Json     @default("{}")
+  notificationPreferences Json     @default("{}")
+  updatedAt               DateTime @updatedAt
+  updatedBy               String?
+
+  @@map("company_settings")
+}
+
+model EmployeeTarget {
+  id            String   @id @default(uuid())
+  employeeId    String
+  targetMonth   String   // Format: "2024-01" for January 2024
+  targetData    Json     // Array of target parameters with values
+  setBy         String   // Manager who set the target
+  notes         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([employeeId, targetMonth])
+  @@map("employee_targets")
 }

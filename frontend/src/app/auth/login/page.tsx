@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { authAPI } from '@/lib/api-client';
@@ -14,7 +14,7 @@ interface LoginForm {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuth } = useAuthStore();
+  const { setAuth, isAuthenticated, _hasHydrated } = useAuthStore();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
@@ -25,6 +25,13 @@ export default function LoginPage() {
     handleSubmit,
     formState: { errors },
   } = useForm<LoginForm>();
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (_hasHydrated && isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [_hasHydrated, isAuthenticated, router]);
 
   const onSubmit = async (data: LoginForm) => {
     try {
@@ -318,16 +325,17 @@ export default function LoginPage() {
                 textAlign: 'center',
                 fontSize: '14px',
                 color: '#6b7280',
-                marginBottom: '4px',
+                marginBottom: '8px',
               }}
             >
-              Default admin credentials:
+              Test credentials (password: <span style={{ color: '#7c3aed', fontWeight: 500 }}>password123</span>)
             </p>
-            <p style={{ textAlign: 'center', fontSize: '14px', margin: 0 }}>
-              <span style={{ color: '#7c3aed', fontWeight: 500 }}>admin@example.com</span>
-              <span style={{ color: '#9ca3af', margin: '0 8px' }}>/</span>
-              <span style={{ color: '#7c3aed', fontWeight: 500 }}>Admin@123</span>
-            </p>
+            <div style={{ fontSize: '13px', color: '#6b7280', lineHeight: '1.6' }}>
+              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>hr@company.com</span> - HR Head</div>
+              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>director@company.com</span> - Director</div>
+              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>manager@company.com</span> - Manager</div>
+              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>employee@company.com</span> - Employee</div>
+            </div>
           </div>
         </div>
       </div>

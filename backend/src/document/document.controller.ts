@@ -12,11 +12,12 @@ import {
   UploadedFile,
   Res,
   StreamableFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
-import { createReadStream } from 'fs';
+import { createReadStream, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { diskStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,6 +31,12 @@ import {
   ReleaseDocumentDto,
   DocumentFilterDto,
 } from './dto/document.dto';
+
+// Ensure uploads directory exists
+const uploadsDir = './uploads/documents';
+if (!existsSync(uploadsDir)) {
+  mkdirSync(uploadsDir, { recursive: true });
+}
 
 const storage = diskStorage({
   destination: './uploads/documents',
@@ -81,7 +88,7 @@ export class DocumentController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
-      throw new Error('File is required');
+      throw new BadRequestException('File is required');
     }
     return this.documentService.uploadForVerification(
       req.user.employeeId,
@@ -129,7 +136,7 @@ export class DocumentController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
-      throw new Error('File is required');
+      throw new BadRequestException('File is required');
     }
     return this.documentService.releaseDocument(
       dto,
@@ -144,6 +151,39 @@ export class DocumentController {
   @ApiOperation({ summary: 'Get pending verification documents' })
   async getPendingVerifications(@Query() filters: DocumentFilterDto) {
     return this.documentService.getPendingVerifications(filters);
+  }
+
+  @Get('verification/:id/view')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'View/download a verification document' })
+  async viewVerificationDocument(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const document = await this.documentService.getVerificationDocumentForView(id);
+    const filePath = join(process.cwd(), document.filePath);
+
+    if (!existsSync(filePath)) {
+      throw new BadRequestException('File not found on server');
+    }
+
+    const file = createReadStream(filePath);
+    const ext = document.fileName.split('.').pop()?.toLowerCase();
+
+    // Set content type based on file extension
+    const contentTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+    };
+
+    res.set({
+      'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
+      'Content-Disposition': `inline; filename="${document.fileName}"`,
+    });
+    return new StreamableFile(file);
   }
 
   @Patch('verification/:id/verify')

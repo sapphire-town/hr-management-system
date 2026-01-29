@@ -8,6 +8,9 @@ import {
   MarkAttendanceDto,
   BulkAttendanceDto,
   AttendanceFilterDto,
+  CreateHolidayDto,
+  UpdateHolidayDto,
+  OverrideAttendanceDto,
 } from './dto/attendance.dto';
 import { AttendanceStatus } from '@prisma/client';
 
@@ -258,5 +261,248 @@ export class AttendanceService {
       status: record?.status || null,
       notes: record?.notes || null,
     };
+  }
+
+  // Holiday Management
+  async createHoliday(dto: CreateHolidayDto) {
+    const date = new Date(dto.date);
+    date.setHours(0, 0, 0, 0);
+
+    const existing = await this.prisma.officialHoliday.findUnique({
+      where: { date },
+    });
+
+    if (existing) {
+      throw new BadRequestException('A holiday already exists on this date');
+    }
+
+    return this.prisma.officialHoliday.create({
+      data: {
+        date,
+        name: dto.name,
+        description: dto.description,
+      },
+    });
+  }
+
+  async updateHoliday(id: string, dto: UpdateHolidayDto) {
+    const holiday = await this.prisma.officialHoliday.findUnique({
+      where: { id },
+    });
+
+    if (!holiday) {
+      throw new NotFoundException('Holiday not found');
+    }
+
+    const updateData: any = {};
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.description !== undefined) updateData.description = dto.description;
+    if (dto.date !== undefined) {
+      const newDate = new Date(dto.date);
+      newDate.setHours(0, 0, 0, 0);
+      updateData.date = newDate;
+    }
+
+    return this.prisma.officialHoliday.update({
+      where: { id },
+      data: updateData,
+    });
+  }
+
+  async deleteHoliday(id: string) {
+    const holiday = await this.prisma.officialHoliday.findUnique({
+      where: { id },
+    });
+
+    if (!holiday) {
+      throw new NotFoundException('Holiday not found');
+    }
+
+    await this.prisma.officialHoliday.delete({ where: { id } });
+    return { message: 'Holiday deleted successfully' };
+  }
+
+  async getAllHolidays(year?: number) {
+    const where: any = {};
+
+    if (year) {
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year, 11, 31);
+      where.date = {
+        gte: startDate,
+        lte: endDate,
+      };
+    }
+
+    return this.prisma.officialHoliday.findMany({
+      where,
+      orderBy: { date: 'asc' },
+    });
+  }
+
+  async getHolidaysForMonth(month: number, year: number) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+
+    return this.prisma.officialHoliday.findMany({
+      where: {
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      orderBy: { date: 'asc' },
+    });
+  }
+
+  // HR Override attendance
+  async overrideAttendance(dto: OverrideAttendanceDto, overriddenBy: string) {
+    const date = new Date(dto.date);
+    date.setHours(0, 0, 0, 0);
+
+    // Verify employee exists
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    const existing = await this.prisma.attendance.findFirst({
+      where: {
+        employeeId: dto.employeeId,
+        date,
+      },
+    });
+
+    if (existing) {
+      return this.prisma.attendance.update({
+        where: { id: existing.id },
+        data: {
+          status: dto.status,
+          notes: dto.notes ? `[HR Override] ${dto.notes}` : '[HR Override]',
+          markedBy: overriddenBy,
+        },
+        include: {
+          employee: {
+            select: { firstName: true, lastName: true },
+          },
+        },
+      });
+    }
+
+    return this.prisma.attendance.create({
+      data: {
+        employeeId: dto.employeeId,
+        date,
+        status: dto.status,
+        notes: dto.notes ? `[HR Override] ${dto.notes}` : '[HR Override]',
+        markedBy: overriddenBy,
+      },
+      include: {
+        employee: {
+          select: { firstName: true, lastName: true },
+        },
+      },
+    });
+  }
+
+  // Get calendar with holidays
+  async getCalendarWithHolidays(employeeId: string, month: number, year: number) {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+
+    const [attendanceRecords, holidays] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: {
+          employeeId,
+          date: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        orderBy: { date: 'asc' },
+      }),
+      this.prisma.officialHoliday.findMany({
+        where: {
+          date: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        orderBy: { date: 'asc' },
+      }),
+    ]);
+
+    // Create a map of dates to attendance
+    const attendanceMap = new Map(
+      attendanceRecords.map((r) => [r.date.toISOString().split('T')[0], r])
+    );
+
+    // Create a map of dates to holidays
+    const holidayMap = new Map(
+      holidays.map((h) => [h.date.toISOString().split('T')[0], h])
+    );
+
+    // Generate calendar data for each day of the month
+    const daysInMonth = endDate.getDate();
+    const calendarData = [];
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month - 1, day);
+      const dateStr = date.toISOString().split('T')[0];
+      const dayOfWeek = date.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+      const attendance = attendanceMap.get(dateStr);
+      const holiday = holidayMap.get(dateStr);
+
+      calendarData.push({
+        date: dateStr,
+        dayOfWeek,
+        isWeekend,
+        isHoliday: !!holiday,
+        holidayName: holiday?.name || null,
+        status: attendance?.status || null,
+        notes: attendance?.notes || null,
+        markedBy: attendance?.markedBy || null,
+      });
+    }
+
+    return calendarData;
+  }
+
+  // Get all employees attendance for a date (for HR)
+  async getAllEmployeesAttendance(date: string) {
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        user: { isActive: true },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: { select: { name: true } },
+        attendance: {
+          where: { date: targetDate },
+          select: { status: true, notes: true, markedBy: true },
+          take: 1,
+        },
+      },
+      orderBy: { firstName: 'asc' },
+    });
+
+    return employees.map((emp) => ({
+      id: emp.id,
+      name: `${emp.firstName} ${emp.lastName}`,
+      role: emp.role.name,
+      status: emp.attendance[0]?.status || 'NOT_MARKED',
+      notes: emp.attendance[0]?.notes || null,
+      markedBy: emp.attendance[0]?.markedBy || null,
+    }));
   }
 }

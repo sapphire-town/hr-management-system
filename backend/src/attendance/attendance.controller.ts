@@ -2,7 +2,10 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
+  Param,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +20,9 @@ import {
   MarkAttendanceDto,
   BulkAttendanceDto,
   AttendanceFilterDto,
+  CreateHolidayDto,
+  UpdateHolidayDto,
+  OverrideAttendanceDto,
 } from './dto/attendance.dto';
 
 interface JwtPayload {
@@ -121,5 +127,83 @@ export class AttendanceController {
       return [];
     }
     return this.attendanceService.getTeamAttendance(user.employeeId, date);
+  }
+
+  // Calendar with holidays
+  @Get('calendar-full')
+  @ApiOperation({ summary: 'Get attendance calendar with holidays' })
+  async getCalendarWithHolidays(
+    @CurrentUser() user: JwtPayload,
+    @Query('month') month: string,
+    @Query('year') year: string,
+  ) {
+    if (!user.employeeId) {
+      return [];
+    }
+    const m = parseInt(month, 10) || new Date().getMonth() + 1;
+    const y = parseInt(year, 10) || new Date().getFullYear();
+    return this.attendanceService.getCalendarWithHolidays(user.employeeId, m, y);
+  }
+
+  // Get all employees attendance for a date (HR view)
+  @Get('all-employees')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Get all employees attendance for a date' })
+  async getAllEmployeesAttendance(@Query('date') date: string) {
+    return this.attendanceService.getAllEmployeesAttendance(date);
+  }
+
+  // HR Override attendance
+  @Post('override')
+  @Roles(UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Override attendance (HR only)' })
+  async overrideAttendance(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: OverrideAttendanceDto,
+  ) {
+    return this.attendanceService.overrideAttendance(dto, user.employeeId || user.sub);
+  }
+
+  // Holiday Management
+  @Get('holidays')
+  @ApiOperation({ summary: 'Get all holidays' })
+  async getAllHolidays(@Query('year') year?: string) {
+    const y = year ? parseInt(year, 10) : undefined;
+    return this.attendanceService.getAllHolidays(y);
+  }
+
+  @Get('holidays/month')
+  @ApiOperation({ summary: 'Get holidays for a month' })
+  async getHolidaysForMonth(
+    @Query('month') month: string,
+    @Query('year') year: string,
+  ) {
+    const m = parseInt(month, 10) || new Date().getMonth() + 1;
+    const y = parseInt(year, 10) || new Date().getFullYear();
+    return this.attendanceService.getHolidaysForMonth(m, y);
+  }
+
+  @Post('holidays')
+  @Roles(UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Create a holiday' })
+  async createHoliday(@Body() dto: CreateHolidayDto) {
+    return this.attendanceService.createHoliday(dto);
+  }
+
+  @Patch('holidays/:id')
+  @Roles(UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Update a holiday' })
+  async updateHoliday(
+    @Param('id') id: string,
+    @Body() dto: UpdateHolidayDto,
+  ) {
+    return this.attendanceService.updateHoliday(id, dto);
+  }
+
+  @Delete('holidays/:id')
+  @Roles(UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Delete a holiday' })
+  async deleteHoliday(@Param('id') id: string) {
+    return this.attendanceService.deleteHoliday(id);
   }
 }

@@ -244,8 +244,10 @@ export class AssetService {
   async hrApprove(id: string, dto: ApproveAssetRequestDto) {
     const request = await this.getRequestById(id);
 
-    if (request.status !== 'PENDING_HR') {
-      throw new BadRequestException('Request is not pending HR approval');
+    // HR can approve PENDING_HR requests (after manager approval)
+    // OR SUBMITTED requests (for employees without managers or to bypass manager)
+    if (request.status !== 'PENDING_HR' && request.status !== 'SUBMITTED') {
+      throw new BadRequestException('Request is not pending approval');
     }
 
     const updated = await this.prisma.assetRequest.update({
@@ -253,6 +255,8 @@ export class AssetService {
       data: {
         status: 'APPROVED',
         hrApproved: true,
+        // If HR is approving a SUBMITTED request, also mark manager as approved (HR bypass)
+        managerApproved: true,
       },
     });
 
@@ -277,8 +281,9 @@ export class AssetService {
   async hrReject(id: string, dto: RejectAssetRequestDto) {
     const request = await this.getRequestById(id);
 
-    if (request.status !== 'PENDING_HR') {
-      throw new BadRequestException('Request is not pending HR approval');
+    // HR can reject PENDING_HR or SUBMITTED requests
+    if (request.status !== 'PENDING_HR' && request.status !== 'SUBMITTED') {
+      throw new BadRequestException('Request is not pending approval');
     }
 
     const updated = await this.prisma.assetRequest.update({

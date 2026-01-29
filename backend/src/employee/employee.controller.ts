@@ -8,8 +8,14 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Res,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -106,6 +112,51 @@ export class EmployeeController {
     return this.employeeService.getManagers();
   }
 
+  @Get('bulk-import/template')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Download bulk import Excel template' })
+  async downloadBulkImportTemplate(@Res() res: Response) {
+    const buffer = await this.employeeService.generateBulkImportTemplate();
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=employee_import_template.xlsx');
+    res.send(buffer);
+  }
+
+  @Post('bulk-import')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Bulk import employees from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Excel file (.xlsx) containing employee data',
+        },
+      },
+    },
+  })
+  async bulkImport(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    const validMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ];
+
+    if (!validMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid file type. Please upload an Excel file (.xlsx)');
+    }
+
+    return this.employeeService.bulkImport(file.buffer);
+  }
+
   @Get(':id')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get employee by ID' })
@@ -163,5 +214,12 @@ export class EmployeeController {
   @ApiOperation({ summary: 'Reactivate a deactivated employee' })
   async reactivate(@Param('id') id: string) {
     return this.employeeService.reactivate(id);
+  }
+
+  @Post('admin/initialize-leave-balances')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Initialize leave balances for all employees' })
+  async initializeLeaveBalances() {
+    return this.employeeService.initializeAllLeaveBalances();
   }
 }

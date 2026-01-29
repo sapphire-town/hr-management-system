@@ -263,4 +263,16 @@ export class DocumentService {
       { value: 'other', label: 'Other' },
     ];
   }
+
+  async getVerificationDocumentForView(id: string) {
+    const document = await this.prisma.documentVerification.findUnique({
+      where: { id },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    return document;
+  }
 }

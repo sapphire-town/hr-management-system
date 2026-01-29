@@ -39,9 +39,17 @@ interface Role {
 interface RoleStats {
   id: string;
   name: string;
-  minimumRequired: number;
-  currentCount: number;
-  deficit: number;
+  current: number;
+  required: number;
+  shortage: number;
+  fulfillmentRate: number;
+}
+
+interface StatsSummary {
+  totalEmployees: number;
+  totalRequired: number;
+  totalShortage: number;
+  overallFulfillment: number;
 }
 
 export default function RolesPage() {
@@ -49,6 +57,7 @@ export default function RolesPage() {
   const { user } = useAuthStore();
   const [roles, setRoles] = React.useState<Role[]>([]);
   const [stats, setStats] = React.useState<RoleStats[]>([]);
+  const [summary, setSummary] = React.useState<StatsSummary | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [showAddModal, setShowAddModal] = React.useState(false);
   const [showEditModal, setShowEditModal] = React.useState(false);
@@ -72,7 +81,15 @@ export default function RolesPage() {
         roleAPI.getStatistics(),
       ]);
       setRoles(rolesRes.data || []);
-      setStats(statsRes.data || []);
+      // Backend returns { roles: [...], summary: {...} }
+      const statsData = statsRes.data;
+      if (statsData && statsData.roles) {
+        setStats(statsData.roles);
+        setSummary(statsData.summary);
+      } else {
+        setStats([]);
+        setSummary(null);
+      }
     } catch (error) {
       console.error('Error fetching roles:', error);
     } finally {
@@ -170,9 +187,10 @@ export default function RolesPage() {
     return stats.find((s) => s.id === roleId);
   };
 
-  const totalEmployees = stats.reduce((sum, s) => sum + s.currentCount, 0);
-  const totalRequired = stats.reduce((sum, s) => sum + s.minimumRequired, 0);
-  const totalDeficit = stats.reduce((sum, s) => sum + Math.max(0, s.deficit), 0);
+  // Use summary from backend, or calculate from stats array as fallback
+  const totalEmployees = summary?.totalEmployees ?? stats.reduce((sum, s) => sum + s.current, 0);
+  const totalRequired = summary?.totalRequired ?? stats.reduce((sum, s) => sum + s.required, 0);
+  const totalDeficit = summary?.totalShortage ?? stats.reduce((sum, s) => sum + s.shortage, 0);
 
   return (
     <DashboardLayout
@@ -332,10 +350,10 @@ export default function RolesPage() {
               <tbody>
                 {roles.map((role) => {
                   const roleStat = getRoleStats(role.id);
-                  const currentCount = roleStat?.currentCount || role._count?.employees || 0;
-                  const minRequired = roleStat?.minimumRequired || role.minimumRequired || 0;
-                  const deficit = minRequired > 0 ? minRequired - currentCount : 0;
-                  const isDeficit = deficit > 0;
+                  const currentCount = roleStat?.current ?? role._count?.employees ?? 0;
+                  const minRequired = roleStat?.required ?? role.minimumRequired ?? 0;
+                  const shortage = roleStat?.shortage ?? (minRequired > 0 ? Math.max(0, minRequired - currentCount) : 0);
+                  const isDeficit = shortage > 0;
                   const isSurplus = currentCount > minRequired && minRequired > 0;
 
                   return (
@@ -413,7 +431,7 @@ export default function RolesPage() {
                             background: '#fee2e2',
                             color: '#991b1b',
                           }}>
-                            Need {deficit} more
+                            Need {shortage} more
                           </span>
                         ) : isSurplus ? (
                           <span style={{

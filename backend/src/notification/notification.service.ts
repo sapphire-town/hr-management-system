@@ -42,6 +42,29 @@ export class NotificationService {
     await this.createNotification(email, 'Welcome', mailOptions.html, 'email');
   }
 
+  async sendPasswordResetEmail(email: string, newPassword: string, firstName: string) {
+    const frontendUrl = this.configService.get('FRONTEND_URL');
+    const subject = 'Password Reset - HR Management System';
+    const html = `
+      <h1>Password Reset</h1>
+      <p>Hello ${firstName},</p>
+      <p>Your password has been reset by an administrator.</p>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>New Temporary Password:</strong> ${newPassword}</p>
+      <p>Please login and change your password immediately for security purposes.</p>
+      <p><a href="${frontendUrl}/auth/login">Login Here</a></p>
+    `;
+
+    await this.transporter.sendMail({
+      from: this.configService.get('EMAIL_FROM'),
+      to: email,
+      subject,
+      html,
+    });
+
+    await this.createNotification(email, subject, html, 'email');
+  }
+
   async sendLeaveStatusEmail(employeeEmail: string, leaveId: string, status: string, reason?: string) {
     const subject = `Leave Application ${status}`;
     const html = `

@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { cn } from '@/lib/utils';
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -7,34 +6,84 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   icon?: React.ReactNode;
 }
 
+const inputBaseStyle: React.CSSProperties = {
+  display: 'flex',
+  height: '48px',
+  width: '100%',
+  borderRadius: '12px',
+  border: '1px solid #e5e7eb',
+  backgroundColor: '#f9fafb',
+  padding: '12px 16px',
+  fontSize: '14px',
+  outline: 'none',
+  transition: 'all 0.2s',
+  boxSizing: 'border-box',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '14px',
+  fontWeight: '500',
+  color: '#374151',
+  marginBottom: '8px',
+};
+
+const errorStyle: React.CSSProperties = {
+  marginTop: '6px',
+  fontSize: '14px',
+  color: '#dc2626',
+};
+
+const iconContainerStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  bottom: 0,
+  left: 0,
+  paddingLeft: '16px',
+  display: 'flex',
+  alignItems: 'center',
+  pointerEvents: 'none',
+};
+
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, label, error, icon, ...props }, ref) => {
+  ({ className, type, label, error, icon, style, disabled, ...props }, ref) => {
+    const [focused, setFocused] = React.useState(false);
+
+    const combinedStyle: React.CSSProperties = {
+      ...inputBaseStyle,
+      ...(icon && { paddingLeft: '48px' }),
+      ...(error && { borderColor: '#f87171' }),
+      ...(focused && {
+        borderColor: '#a78bfa',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 0 0 3px rgba(167, 139, 250, 0.2)',
+      }),
+      ...(disabled && { cursor: 'not-allowed', opacity: 0.5 }),
+      ...style,
+    };
+
     return (
-      <div className="w-full">
-        {label && (
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {label}
-          </label>
-        )}
-        <div className="relative">
-          {icon && (
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              {icon}
-            </div>
-          )}
+      <div style={{ width: '100%' }}>
+        {label && <label style={labelStyle}>{label}</label>}
+        <div style={{ position: 'relative' }}>
+          {icon && <div style={iconContainerStyle}>{icon}</div>}
           <input
             type={type}
-            className={cn(
-              'flex h-12 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400 focus:bg-white disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200',
-              icon && 'pl-12',
-              error && 'border-red-400 focus:ring-red-100 focus:border-red-500',
-              className
-            )}
+            style={combinedStyle}
             ref={ref}
+            disabled={disabled}
+            onFocus={(e) => {
+              setFocused(true);
+              props.onFocus?.(e);
+            }}
+            onBlur={(e) => {
+              setFocused(false);
+              props.onBlur?.(e);
+            }}
             {...props}
           />
         </div>
-        {error && <p className="mt-1.5 text-sm text-red-600">{error}</p>}
+        {error && <p style={errorStyle}>{error}</p>}
       </div>
     );
   }

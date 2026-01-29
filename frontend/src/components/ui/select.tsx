@@ -1,145 +1,271 @@
 'use client';
 
 import * as React from 'react';
-import * as SelectPrimitive from '@radix-ui/react-select';
-import { Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { createPortal } from 'react-dom';
+import { Check, ChevronDown } from 'lucide-react';
 
-const Select = SelectPrimitive.Root;
-const SelectGroup = SelectPrimitive.Group;
-const SelectValue = SelectPrimitive.Value;
+interface SelectContextValue {
+  value?: string;
+  onValueChange?: (value: string) => void;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  triggerRef: React.RefObject<HTMLButtonElement>;
+}
 
-const SelectTrigger = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Trigger
-    ref={ref}
-    className={cn(
-      'flex h-12 w-full items-center justify-between rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3 text-sm ring-offset-background placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400 focus:bg-white disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 transition-all duration-200',
-      className
-    )}
-    {...props}
-  >
-    {children}
-    <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 text-gray-400" />
-    </SelectPrimitive.Icon>
-  </SelectPrimitive.Trigger>
-));
-SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
+const SelectContext = React.createContext<SelectContextValue>({
+  open: false,
+  setOpen: () => {},
+  triggerRef: { current: null },
+});
 
-const SelectScrollUpButton = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.ScrollUpButton
-    ref={ref}
-    className={cn(
-      'flex cursor-default items-center justify-center py-1',
-      className
-    )}
-    {...props}
-  >
-    <ChevronUp className="h-4 w-4" />
-  </SelectPrimitive.ScrollUpButton>
-));
-SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
+const useSelect = () => React.useContext(SelectContext);
 
-const SelectScrollDownButton = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.ScrollDownButton>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.ScrollDownButton
-    ref={ref}
-    className={cn(
-      'flex cursor-default items-center justify-center py-1',
-      className
-    )}
-    {...props}
-  >
-    <ChevronDown className="h-4 w-4" />
-  </SelectPrimitive.ScrollDownButton>
-));
-SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayName;
+interface SelectProps {
+  value?: string;
+  onValueChange?: (value: string) => void;
+  children: React.ReactNode;
+}
 
-const SelectContent = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = 'popper', ...props }, ref) => (
-  <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
-      ref={ref}
-      className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-xl border border-white/50 bg-white text-foreground shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
-        position === 'popper' &&
-          'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
-        className
-      )}
-      position={position}
-      {...props}
-    >
-      <SelectScrollUpButton />
-      <SelectPrimitive.Viewport
-        className={cn(
-          'p-1.5',
-          position === 'popper' &&
-            'h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]'
-        )}
+function Select({ value, onValueChange, children }: SelectProps) {
+  const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+
+  return (
+    <SelectContext.Provider value={{ value, onValueChange, open, setOpen, triggerRef }}>
+      {children}
+    </SelectContext.Provider>
+  );
+}
+
+const SelectGroup = ({ children }: { children: React.ReactNode }) => <>{children}</>;
+const SelectValue = ({ placeholder }: { placeholder?: string }) => {
+  const { value } = useSelect();
+  return <span>{value || placeholder || 'Select...'}</span>;
+};
+
+const triggerStyle: React.CSSProperties = {
+  display: 'flex',
+  height: '48px',
+  width: '100%',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  borderRadius: '12px',
+  border: '1px solid #e5e7eb',
+  backgroundColor: '#f9fafb',
+  padding: '12px 16px',
+  fontSize: '14px',
+  cursor: 'pointer',
+  outline: 'none',
+  transition: 'all 0.2s',
+  boxSizing: 'border-box',
+};
+
+interface SelectTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  children: React.ReactNode;
+}
+
+const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
+  ({ children, style, ...props }, ref) => {
+    const { open, setOpen, triggerRef } = useSelect();
+    const [focused, setFocused] = React.useState(false);
+
+    const combinedRef = (node: HTMLButtonElement) => {
+      if (typeof ref === 'function') ref(node);
+      else if (ref) ref.current = node;
+      (triggerRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+    };
+
+    const combinedStyle: React.CSSProperties = {
+      ...triggerStyle,
+      ...(focused && {
+        borderColor: '#a78bfa',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 0 0 3px rgba(167, 139, 250, 0.2)',
+      }),
+      ...style,
+    };
+
+    return (
+      <button
+        ref={combinedRef}
+        type="button"
+        onClick={() => setOpen(!open)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={combinedStyle}
+        {...props}
       >
         {children}
-      </SelectPrimitive.Viewport>
-      <SelectScrollDownButton />
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
-));
-SelectContent.displayName = SelectPrimitive.Content.displayName;
+        <ChevronDown style={{ width: '16px', height: '16px', color: '#9ca3af', flexShrink: 0 }} />
+      </button>
+    );
+  }
+);
+SelectTrigger.displayName = 'SelectTrigger';
 
-const SelectLabel = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Label>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Label
-    ref={ref}
-    className={cn('py-1.5 pl-8 pr-2 text-sm font-semibold', className)}
-    {...props}
-  />
-));
-SelectLabel.displayName = SelectPrimitive.Label.displayName;
+const contentStyle: React.CSSProperties = {
+  position: 'absolute',
+  zIndex: 10001,
+  maxHeight: '300px',
+  minWidth: '8rem',
+  overflow: 'auto',
+  borderRadius: '12px',
+  border: '1px solid #e5e7eb',
+  backgroundColor: '#ffffff',
+  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.15)',
+  padding: '6px',
+};
 
-const SelectItem = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={cn(
-      'relative flex w-full cursor-default select-none items-center rounded-lg py-2.5 pl-9 pr-3 text-sm outline-none focus:bg-violet-50 focus:text-violet-700 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-150',
-      className
-    )}
-    {...props}
-  >
-    <span className="absolute left-2.5 flex h-4 w-4 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4 text-violet-600" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-  </SelectPrimitive.Item>
-));
-SelectItem.displayName = SelectPrimitive.Item.displayName;
+interface SelectContentProps {
+  children: React.ReactNode;
+}
 
-const SelectSeparator = React.forwardRef<
-  React.ElementRef<typeof SelectPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Separator
-    ref={ref}
-    className={cn('-mx-1 my-1 h-px bg-muted', className)}
-    {...props}
-  />
-));
-SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
+const SelectContent = ({ children }: SelectContentProps) => {
+  const { open, setOpen, triggerRef } = useSelect();
+  const [mounted, setMounted] = React.useState(false);
+  const [position, setPosition] = React.useState({ top: 0, left: 0, width: 0 });
+  const contentRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
+  }, [open, triggerRef]);
+
+  // Close on click outside
+  React.useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        contentRef.current &&
+        !contentRef.current.contains(e.target as Node) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open, setOpen, triggerRef]);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
+    <div
+      ref={contentRef}
+      style={{
+        ...contentStyle,
+        top: position.top,
+        left: position.left,
+        width: position.width,
+      }}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+};
+
+const SelectLabel = ({ children }: { children: React.ReactNode }) => (
+  <div style={{ padding: '6px 32px 6px 8px', fontSize: '14px', fontWeight: '600', color: '#374151' }}>
+    {children}
+  </div>
+);
+
+const itemStyle: React.CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  width: '100%',
+  cursor: 'pointer',
+  alignItems: 'center',
+  borderRadius: '8px',
+  padding: '10px 12px 10px 36px',
+  fontSize: '14px',
+  outline: 'none',
+  transition: 'background-color 0.15s',
+  border: 'none',
+  backgroundColor: 'transparent',
+  textAlign: 'left',
+};
+
+interface SelectItemProps {
+  value: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+}
+
+const SelectItem = ({ value, children, disabled }: SelectItemProps) => {
+  const { value: selectedValue, onValueChange, setOpen } = useSelect();
+  const [hovered, setHovered] = React.useState(false);
+  const isSelected = selectedValue === value;
+
+  const handleClick = () => {
+    if (disabled) return;
+    onValueChange?.(value);
+    setOpen(false);
+  };
+
+  const combinedStyle: React.CSSProperties = {
+    ...itemStyle,
+    ...(hovered && { backgroundColor: '#f5f3ff', color: '#7c3aed' }),
+    ...(disabled && { pointerEvents: 'none', opacity: 0.5 }),
+  };
+
+  return (
+    <button
+      type="button"
+      style={combinedStyle}
+      onClick={handleClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      disabled={disabled}
+    >
+      <span style={{
+        position: 'absolute',
+        left: '10px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '16px',
+        height: '16px',
+      }}>
+        {isSelected && <Check style={{ width: '16px', height: '16px', color: '#7c3aed' }} />}
+      </span>
+      {children}
+    </button>
+  );
+};
+
+const SelectSeparator = () => (
+  <div style={{ height: '1px', margin: '4px -6px', backgroundColor: '#e5e7eb' }} />
+);
+
+// These are no-op components for compatibility
+const SelectScrollUpButton = () => null;
+const SelectScrollDownButton = () => null;
 
 export {
   Select,

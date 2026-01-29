@@ -9,10 +9,12 @@ import {
   Upload,
   AlertCircle,
   IndianRupee,
+  CheckCircle,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
+import { reimbursementAPI } from '@/lib/api-client';
 
-const categories = [
+const defaultCategories = [
   { value: 'travel', label: 'Travel', description: 'Flight, train, bus fares' },
   { value: 'food', label: 'Food & Meals', description: 'Business meals and refreshments' },
   { value: 'communication', label: 'Communication', description: 'Phone, internet bills' },
@@ -27,6 +29,7 @@ const categories = [
 export default function SubmitReimbursementPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [categories, setCategories] = React.useState(defaultCategories);
   const [formData, setFormData] = React.useState({
     category: '',
     amount: '',
@@ -35,6 +38,27 @@ export default function SubmitReimbursementPage() {
     receipt: null as File | null,
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+
+  // Fetch categories from backend
+  React.useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await reimbursementAPI.getCategories();
+        if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+          setCategories(res.data.map((cat: any) => ({
+            value: cat.value || cat.name?.toLowerCase() || cat,
+            label: cat.label || cat.name || cat,
+            description: cat.description || '',
+          })));
+        }
+      } catch (error) {
+        // Use default categories if fetch fails
+        console.log('Using default categories');
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -70,12 +94,26 @@ export default function SubmitReimbursementPage() {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
+    setSubmitError(null);
+
     try {
-      // API call would go here
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const submitData = new FormData();
+      submitData.append('category', formData.category);
+      submitData.append('amount', formData.amount);
+      submitData.append('expenseDate', formData.expenseDate);
+      submitData.append('description', formData.description);
+      if (formData.receipt) {
+        submitData.append('receipt', formData.receipt);
+      }
+
+      await reimbursementAPI.submit(submitData);
       router.push('/dashboard/reimbursements');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting claim:', error);
+      setSubmitError(
+        error.response?.data?.message ||
+        'Failed to submit claim. Please try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -154,6 +192,25 @@ export default function SubmitReimbursementPage() {
               Expense Details
             </h3>
 
+            {/* Error Alert */}
+            {submitError && (
+              <div
+                style={{
+                  padding: '16px',
+                  borderRadius: '12px',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  marginBottom: '20px',
+                }}
+              >
+                <AlertCircle style={{ height: '20px', width: '20px', color: '#ef4444', flexShrink: 0 }} />
+                <p style={{ fontSize: '14px', color: '#dc2626', margin: 0 }}>{submitError}</p>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Category Selection */}
               <div>
@@ -193,9 +250,11 @@ export default function SubmitReimbursementPage() {
                       >
                         {cat.label}
                       </p>
-                      <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
-                        {cat.description}
-                      </p>
+                      {cat.description && (
+                        <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
+                          {cat.description}
+                        </p>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -467,25 +526,5 @@ export default function SubmitReimbursementPage() {
         }
       `}</style>
     </DashboardLayout>
-  );
-}
-
-function CheckCircle(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
   );
 }

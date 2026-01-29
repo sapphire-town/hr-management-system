@@ -13,6 +13,14 @@ import { AssetModule } from './asset/asset.module';
 import { ReimbursementModule } from './reimbursement/reimbursement.module';
 import { ResignationModule } from './resignation/resignation.module';
 import { RoleModule } from './role/role.module';
+import { FeedbackModule } from './feedback/feedback.module';
+import { RecruitmentModule } from './recruitment/recruitment.module';
+import { PayrollModule } from './payroll/payroll.module';
+import { PerformanceModule } from './performance/performance.module';
+import { DirectorsListModule } from './directors-list/directors-list.module';
+import { SettingsModule } from './settings/settings.module';
+import { TargetModule } from './target/target.module';
+import { DailyReportModule } from './daily-report/daily-report.module';
 
 @Module({
   imports: [
@@ -32,6 +40,14 @@ import { RoleModule } from './role/role.module';
     AssetModule,
     ReimbursementModule,
     ResignationModule,
+    FeedbackModule,
+    RecruitmentModule,
+    PayrollModule,
+    PerformanceModule,
+    DirectorsListModule,
+    SettingsModule,
+    TargetModule,
+    DailyReportModule,
   ],
 })
 export class AppModule {}

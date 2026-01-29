@@ -58,3 +58,54 @@ export class AttendanceFilterDto {
   @IsString()
   limit?: string;
 }
+
+export class CreateHolidayDto {
+  @ApiProperty()
+  @IsDateString()
+  date: string;
+
+  @ApiProperty()
+  @IsString()
+  name: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class UpdateHolidayDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class OverrideAttendanceDto {
+  @ApiProperty()
+  @IsString()
+  employeeId: string;
+
+  @ApiProperty()
+  @IsDateString()
+  date: string;
+
+  @ApiProperty({ enum: AttendanceStatus })
+  @IsEnum(AttendanceStatus)
+  status: AttendanceStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}

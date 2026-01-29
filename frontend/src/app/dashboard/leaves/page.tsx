@@ -2,55 +2,42 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Download, Calendar, Clock, CheckCircle, XCircle, Users, Loader2 } from 'lucide-react';
+import { Plus, Download, Calendar, Clock, CheckCircle, XCircle, Users, Loader2, Check, X } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
+import { leaveAPI } from '@/lib/api-client';
 
-// Mock data - replace with API call
-const mockLeaves = [
-  {
-    id: '1',
-    employee: { firstName: 'John', lastName: 'Doe' },
-    leaveType: 'CASUAL',
-    startDate: '2024-01-15',
-    endDate: '2024-01-17',
-    status: 'PENDING_MANAGER',
-    reason: 'Personal work',
-  },
-  {
-    id: '2',
-    employee: { firstName: 'Jane', lastName: 'Smith' },
-    leaveType: 'SICK',
-    startDate: '2024-01-10',
-    endDate: '2024-01-11',
-    status: 'APPROVED',
-    reason: 'Medical appointment',
-  },
-  {
-    id: '3',
-    employee: { firstName: 'Bob', lastName: 'Wilson' },
-    leaveType: 'EARNED',
-    startDate: '2024-01-20',
-    endDate: '2024-01-25',
-    status: 'PENDING_HR',
-    reason: 'Family vacation',
-  },
-  {
-    id: '4',
-    employee: { firstName: 'Alice', lastName: 'Johnson' },
-    leaveType: 'CASUAL',
-    startDate: '2024-01-05',
-    endDate: '2024-01-05',
-    status: 'REJECTED',
-    reason: 'Personal errands',
-  },
-];
+interface Leave {
+  id: string;
+  employeeId: string;
+  employee: {
+    firstName: string;
+    lastName: string;
+    user?: { email: string };
+    manager?: { firstName: string; lastName: string };
+  };
+  leaveType: 'CASUAL' | 'SICK' | 'EARNED';
+  startDate: string;
+  endDate: string;
+  numberOfDays: number;
+  status: 'PENDING_MANAGER' | 'PENDING_HR' | 'APPROVED' | 'REJECTED';
+  reason: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
 
-const leaveBalance = {
-  sick: { used: 2, total: 12 },
-  casual: { used: 4, total: 12 },
-  earned: { used: 0, total: 15 },
-};
+interface LeaveBalance {
+  sick: number;
+  casual: number;
+  earned: number;
+  total: number;
+  allocation?: {
+    sick: number;
+    casual: number;
+    earned: number;
+    total: number;
+  };
+}
 
 const statusConfig: Record<string, { color: string; bg: string; label: string; icon: React.ReactNode }> = {
   PENDING_MANAGER: { color: '#d97706', bg: '#fef3c7', label: 'Pending Manager', icon: <Clock className="w-3.5 h-3.5" /> },
@@ -68,21 +55,126 @@ const leaveTypeConfig: Record<string, { color: string; bg: string }> = {
 export default function LeavesPage() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [leaves] = React.useState(mockLeaves);
-  const [loading] = React.useState(false);
+  const [leaves, setLeaves] = React.useState<Leave[]>([]);
+  const [balance, setBalance] = React.useState<LeaveBalance | null>(null);
+  const [loading, setLoading] = React.useState(true);
   const [activeTab, setActiveTab] = React.useState('all');
+  const [actionLoading, setActionLoading] = React.useState<string | null>(null);
 
   const isEmployee = user?.role === 'EMPLOYEE';
+  const isManager = user?.role === 'MANAGER';
+  const isHRHead = user?.role === 'HR_HEAD';
+  const isDirector = user?.role === 'DIRECTOR';
+
+  const fetchData = React.useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Fetch leave balance
+      const balanceRes = await leaveAPI.getMyBalance();
+      setBalance(balanceRes.data);
+
+      // Fetch leaves based on role
+      let leavesData: Leave[] = [];
+
+      if (isEmployee) {
+        const myLeavesRes = await leaveAPI.getMyLeaves({ limit: 100 });
+        leavesData = myLeavesRes.data.data || [];
+      } else if (isManager) {
+        // Get pending for manager and my leaves
+        const [pendingRes, myLeavesRes] = await Promise.all([
+          leaveAPI.getPendingForManager(),
+          leaveAPI.getMyLeaves({ limit: 100 }),
+        ]);
+        const pendingLeaves = pendingRes.data || [];
+        const myLeaves = myLeavesRes.data.data || [];
+        // Combine and dedupe
+        const allLeaves = [...pendingLeaves, ...myLeaves];
+        leavesData = allLeaves.filter((leave, index, self) =>
+          index === self.findIndex(l => l.id === leave.id)
+        );
+      } else if (isHRHead || isDirector) {
+        // Get all leaves for HR/Director
+        const [allLeavesRes, pendingHRRes] = await Promise.all([
+          leaveAPI.getAll({ limit: 100 }),
+          leaveAPI.getPendingForHR(),
+        ]);
+        const allLeaves = allLeavesRes.data.data || [];
+        const pendingHR = pendingHRRes.data || [];
+        // Combine and dedupe
+        const combined = [...pendingHR, ...allLeaves];
+        leavesData = combined.filter((leave, index, self) =>
+          index === self.findIndex(l => l.id === leave.id)
+        );
+      }
+
+      setLeaves(leavesData);
+    } catch (error) {
+      console.error('Error fetching leaves:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [isEmployee, isManager, isHRHead, isDirector]);
+
+  React.useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const filteredLeaves = React.useMemo(() => {
     if (activeTab === 'all') return leaves;
     return leaves.filter((l) => l.status === activeTab);
   }, [leaves, activeTab]);
 
-  const calculateDays = (startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const handleApprove = async (leaveId: string) => {
+    try {
+      setActionLoading(leaveId);
+      await leaveAPI.approve(leaveId);
+      fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to approve leave');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReject = async (leaveId: string) => {
+    const reason = prompt('Please enter rejection reason:');
+    if (!reason) return;
+
+    try {
+      setActionLoading(leaveId);
+      await leaveAPI.reject(leaveId, reason);
+      fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to reject leave');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancel = async (leaveId: string) => {
+    if (!confirm('Are you sure you want to cancel this leave request?')) return;
+
+    try {
+      setActionLoading(leaveId);
+      await leaveAPI.cancel(leaveId);
+      fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to cancel leave');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const canApprove = (leave: Leave) => {
+    if (isManager && leave.status === 'PENDING_MANAGER') return true;
+    if ((isHRHead || isDirector) && leave.status === 'PENDING_HR') return true;
+    return false;
+  };
+
+  const canCancel = (leave: Leave) => {
+    return leave.employeeId === user?.employee?.id &&
+           (leave.status === 'PENDING_MANAGER' || leave.status === 'PENDING_HR');
   };
 
   const tabs = [
@@ -150,39 +242,43 @@ export default function LeavesPage() {
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        {/* Leave Balance Cards (for employees) */}
-        {isEmployee && (
+        {/* Leave Balance Cards */}
+        {balance && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             {[
-              { label: 'Sick Leave', data: leaveBalance.sick, color: '#ef4444', bg: '#fef2f2' },
-              { label: 'Casual Leave', data: leaveBalance.casual, color: '#3b82f6', bg: '#eff6ff' },
-              { label: 'Earned Leave', data: leaveBalance.earned, color: '#22c55e', bg: '#f0fdf4' },
-            ].map((item) => (
-              <div key={item.label} style={cardStyle}>
-                <div style={{ padding: '20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>{item.label}</span>
-                    <span style={{ fontSize: '13px', color: '#6b7280' }}>
-                      {item.data.total - item.data.used} remaining
-                    </span>
+              { label: 'Sick Leave', value: balance.sick, color: '#ef4444', bg: '#fef2f2', total: balance.allocation?.sick ?? 12 },
+              { label: 'Casual Leave', value: balance.casual, color: '#3b82f6', bg: '#eff6ff', total: balance.allocation?.casual ?? 12 },
+              { label: 'Earned Leave', value: balance.earned, color: '#22c55e', bg: '#f0fdf4', total: balance.allocation?.earned ?? 15 },
+            ].map((item) => {
+              const used = item.total - item.value;
+              const percentRemaining = item.total > 0 ? (item.value / item.total) * 100 : 0;
+              return (
+                <div key={item.label} style={cardStyle}>
+                  <div style={{ padding: '20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>{item.label}</span>
+                      <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                        {item.value} remaining
+                      </span>
+                    </div>
+                    <div style={{ height: '8px', borderRadius: '4px', backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${percentRemaining}%`,
+                          backgroundColor: item.color,
+                          borderRadius: '4px',
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px', margin: '8px 0 0 0' }}>
+                      {used} used of {item.total} days
+                    </p>
                   </div>
-                  <div style={{ height: '8px', borderRadius: '4px', backgroundColor: '#f3f4f6', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${((item.data.total - item.data.used) / item.data.total) * 100}%`,
-                        backgroundColor: item.color,
-                        borderRadius: '4px',
-                        transition: 'width 0.3s ease',
-                      }}
-                    />
-                  </div>
-                  <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px', margin: '8px 0 0 0' }}>
-                    {item.data.used} used of {item.data.total} days
-                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -243,13 +339,15 @@ export default function LeavesPage() {
                     <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0' }}>
                       Reason
                     </th>
+                    <th style={{ padding: '16px 24px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid #e2e8f0' }}>
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredLeaves.map((leave, index) => {
                     const typeConfig = leaveTypeConfig[leave.leaveType];
                     const status = statusConfig[leave.status];
-                    const days = calculateDays(leave.startDate, leave.endDate);
 
                     return (
                       <tr
@@ -292,8 +390,8 @@ export default function LeavesPage() {
                               borderRadius: '8px',
                               fontSize: '13px',
                               fontWeight: 600,
-                              backgroundColor: typeConfig.bg,
-                              color: typeConfig.color,
+                              backgroundColor: typeConfig?.bg || '#f3f4f6',
+                              color: typeConfig?.color || '#374151',
                             }}
                           >
                             {leave.leaveType.charAt(0) + leave.leaveType.slice(1).toLowerCase()}
@@ -325,7 +423,7 @@ export default function LeavesPage() {
                               color: '#334155',
                             }}
                           >
-                            {days}
+                            {leave.numberOfDays}
                           </span>
                         </td>
                         <td style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
@@ -338,18 +436,82 @@ export default function LeavesPage() {
                               borderRadius: '20px',
                               fontSize: '13px',
                               fontWeight: 600,
-                              backgroundColor: status.bg,
-                              color: status.color,
+                              backgroundColor: status?.bg || '#f3f4f6',
+                              color: status?.color || '#374151',
                             }}
                           >
-                            {status.icon}
-                            {status.label}
+                            {status?.icon}
+                            {status?.label || leave.status}
                           </span>
                         </td>
                         <td style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
                           <span style={{ fontSize: '14px', color: '#64748b', maxWidth: '200px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {leave.reason}
                           </span>
+                        </td>
+                        <td style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                            {canApprove(leave) && (
+                              <>
+                                <button
+                                  onClick={() => handleApprove(leave.id)}
+                                  disabled={actionLoading === leave.id}
+                                  style={{
+                                    padding: '8px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    backgroundColor: '#dcfce7',
+                                    color: '#166534',
+                                    cursor: actionLoading === leave.id ? 'not-allowed' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                  title="Approve"
+                                >
+                                  <Check style={{ width: '16px', height: '16px' }} />
+                                </button>
+                                <button
+                                  onClick={() => handleReject(leave.id)}
+                                  disabled={actionLoading === leave.id}
+                                  style={{
+                                    padding: '8px',
+                                    borderRadius: '8px',
+                                    border: 'none',
+                                    backgroundColor: '#fee2e2',
+                                    color: '#991b1b',
+                                    cursor: actionLoading === leave.id ? 'not-allowed' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                  title="Reject"
+                                >
+                                  <X style={{ width: '16px', height: '16px' }} />
+                                </button>
+                              </>
+                            )}
+                            {canCancel(leave) && (
+                              <button
+                                onClick={() => handleCancel(leave.id)}
+                                disabled={actionLoading === leave.id}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #e5e7eb',
+                                  backgroundColor: '#ffffff',
+                                  color: '#6b7280',
+                                  fontSize: '13px',
+                                  cursor: actionLoading === leave.id ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            {!canApprove(leave) && !canCancel(leave) && (
+                              <span style={{ color: '#9ca3af', fontSize: '13px' }}>-</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -374,53 +536,6 @@ export default function LeavesPage() {
               <span style={{ fontSize: '14px', color: '#64748b' }}>
                 Showing <strong>{filteredLeaves.length}</strong> of <strong>{leaves.length}</strong> entries
               </span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    backgroundColor: '#ffffff',
-                    color: '#64748b',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  Previous
-                </button>
-                <button
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: '#7c3aed',
-                    color: '#ffffff',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    minWidth: '36px',
-                  }}
-                >
-                  1
-                </button>
-                <button
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    backgroundColor: '#ffffff',
-                    color: '#64748b',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  Next
-                </button>
-              </div>
             </div>
           )}
         </div>

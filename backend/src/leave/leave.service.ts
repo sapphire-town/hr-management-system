@@ -377,18 +377,27 @@ export class LeaveService {
   }
 
   async getBalance(employeeId: string) {
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: employeeId },
-      select: {
-        sickLeaveBalance: true,
-        casualLeaveBalance: true,
-        earnedLeaveBalance: true,
-      },
-    });
+    const [employee, settings] = await Promise.all([
+      this.prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: {
+          sickLeaveBalance: true,
+          casualLeaveBalance: true,
+          earnedLeaveBalance: true,
+        },
+      }),
+      this.prisma.companySettings.findFirst(),
+    ]);
 
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
+
+    // Get leave policies from settings or use defaults
+    const leavePolicies = (settings?.leavePolicies as Record<string, number>) || {};
+    const sickTotal = leavePolicies.sickLeavePerYear ?? 12;
+    const casualTotal = leavePolicies.casualLeavePerYear ?? 12;
+    const earnedTotal = leavePolicies.earnedLeavePerYear ?? 15;
 
     return {
       sick: employee.sickLeaveBalance,
@@ -398,6 +407,12 @@ export class LeaveService {
         employee.sickLeaveBalance +
         employee.casualLeaveBalance +
         employee.earnedLeaveBalance,
+      allocation: {
+        sick: sickTotal,
+        casual: casualTotal,
+        earned: earnedTotal,
+        total: sickTotal + casualTotal + earnedTotal,
+      },
     };
   }
 

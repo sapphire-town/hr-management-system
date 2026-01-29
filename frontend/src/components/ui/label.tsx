@@ -1,22 +1,26 @@
 'use client';
 
 import * as React from 'react';
-import * as LabelPrimitive from '@radix-ui/react-label';
-import { cn } from '@/lib/utils';
+
+const labelStyle: React.CSSProperties = {
+  fontSize: '14px',
+  fontWeight: '500',
+  lineHeight: 1,
+  display: 'block',
+  marginBottom: '6px',
+  color: '#374151',
+};
 
 const Label = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <LabelPrimitive.Root
+  HTMLLabelElement,
+  React.LabelHTMLAttributes<HTMLLabelElement>
+>(({ style, ...props }, ref) => (
+  <label
     ref={ref}
-    className={cn(
-      'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
-      className
-    )}
+    style={{ ...labelStyle, ...style }}
     {...props}
   />
 ));
-Label.displayName = LabelPrimitive.Root.displayName;
+Label.displayName = 'Label';
 
 export { Label };

@@ -161,15 +161,37 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
     {
       title: 'Interviews',
       items: [
-        { label: 'My Interviews', href: '/dashboard/interviews', icon: Video },
-        { label: 'Placement Drives', href: '/dashboard/drives', icon: Building2 },
-        { label: 'Evaluations', href: '/dashboard/evaluations', icon: ClipboardList },
+        { label: 'My Drives', href: '/dashboard/my-drives', icon: Building2 },
+      ],
+    },
+    {
+      title: 'My Work',
+      items: [
+        { label: 'My Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
+        { label: 'Leave Management', href: '/dashboard/leaves', icon: Calendar },
+        { label: 'Daily Reports', href: '/dashboard/reports/daily', icon: FileText },
+      ],
+    },
+    {
+      title: 'Documents & Pay',
+      items: [
+        { label: 'My Documents', href: '/dashboard/documents', icon: Folder },
+        { label: 'Payslips', href: '/dashboard/payslips', icon: DollarSign },
+      ],
+    },
+    {
+      title: 'Requests',
+      items: [
+        { label: 'Asset Requests', href: '/dashboard/assets', icon: Package },
+        { label: 'Reimbursements', href: '/dashboard/reimbursements', icon: Receipt },
+        { label: 'Feedback', href: '/dashboard/feedback', icon: MessageSquare },
       ],
     },
     {
       title: 'Account',
       items: [
         { label: 'Profile', href: '/dashboard/profile', icon: User },
+        { label: 'Resignation', href: '/dashboard/resignation', icon: UserMinus },
       ],
     },
   ],

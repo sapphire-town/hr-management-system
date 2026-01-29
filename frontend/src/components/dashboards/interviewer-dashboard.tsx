@@ -1,240 +1,263 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import {
-  Video,
   Building2,
   ClipboardList,
-  Calendar,
-  Clock,
   CheckCircle,
   Users,
   TrendingUp,
+  GraduationCap,
+  Clock,
+  Calendar,
+  Loader2,
+  ChevronRight,
+  XCircle,
 } from 'lucide-react';
 import { StatsCard, StatsGrid } from '@/components/dashboard/stats-card';
-import { ChartCard } from '@/components/dashboard/chart-card';
-import { ActivityFeed, type Activity } from '@/components/dashboard/activity-feed';
 import { QuickActions } from '@/components/dashboard/quick-actions';
-import { Badge } from '@/components/ui/badge';
-import { DonutChart } from '@/components/charts/pie-chart';
-import { cn } from '@/lib/utils';
+import { recruitmentAPI } from '@/lib/api-client';
 
-// Mock data - replace with API calls
-const stats = {
-  scheduledInterviews: 5,
-  completedThisMonth: 18,
-  pendingEvaluations: 3,
-  passRate: 68,
-};
-
-const upcomingInterviews = [
-  {
-    id: '1',
-    candidate: 'Rahul Sharma',
-    position: 'Software Engineer',
-    time: 'Today, 2:00 PM',
-    round: 'Technical Round 1',
-    drive: 'Campus Drive - IIT Delhi',
-  },
-  {
-    id: '2',
-    candidate: 'Priya Patel',
-    position: 'Software Engineer',
-    time: 'Today, 4:00 PM',
-    round: 'Technical Round 1',
-    drive: 'Campus Drive - IIT Delhi',
-  },
-  {
-    id: '3',
-    candidate: 'Amit Kumar',
-    position: 'Data Analyst',
-    time: 'Tomorrow, 10:00 AM',
-    round: 'HR Round',
-    drive: 'Campus Drive - BITS Pilani',
-  },
-];
-
-const pendingEvaluations = [
-  {
-    id: '1',
-    candidate: 'Sneha Reddy',
-    position: 'Frontend Developer',
-    interviewDate: '12 Jan 2024',
-    drive: 'Campus Drive - NIT Trichy',
-  },
-  {
-    id: '2',
-    candidate: 'Vikram Singh',
-    position: 'Backend Developer',
-    interviewDate: '11 Jan 2024',
-    drive: 'Campus Drive - NIT Trichy',
-  },
-  {
-    id: '3',
-    candidate: 'Anjali Gupta',
-    position: 'Software Engineer',
-    interviewDate: '10 Jan 2024',
-    drive: 'Campus Drive - IIT Delhi',
-  },
-];
-
-const evaluationStats = [
-  { name: 'Selected', value: 12, color: 'hsl(142, 76%, 36%)' },
-  { name: 'Rejected', value: 5, color: 'hsl(0, 84%, 60%)' },
-  { name: 'On Hold', value: 1, color: 'hsl(45, 93%, 47%)' },
-];
-
-const recentActivities: Activity[] = [
-  {
-    id: '1',
-    type: 'general',
-    title: 'Interview completed',
-    description: 'Technical round with Rahul Sharma',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    status: 'completed',
-  },
-  {
-    id: '2',
-    type: 'general',
-    title: 'Evaluation submitted',
-    description: 'Priya Patel - Selected',
-    timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000),
-    status: 'approved',
-  },
-  {
-    id: '3',
-    type: 'general',
-    title: 'Assigned to new drive',
-    description: 'Campus Drive - BITS Pilani',
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-  },
-];
+interface PlacementDrive {
+  id: string;
+  collegeName: string;
+  driveDate: string;
+  roles: Array<{ name: string; description: string; positions?: number }>;
+  interviewers: Array<{
+    id: string;
+    interviewer: { id: string; firstName: string; lastName: string };
+  }>;
+  _count: { students: number };
+}
 
 const quickActions = [
-  { label: 'My Interviews', href: '/dashboard/interviews', icon: Video },
-  { label: 'Submit Evaluation', href: '/dashboard/evaluations/new', icon: ClipboardList },
-  { label: 'Placement Drives', href: '/dashboard/drives', icon: Building2 },
-  { label: 'Past Evaluations', href: '/dashboard/evaluations', icon: CheckCircle },
+  { label: 'My Drives', href: '/dashboard/my-drives', icon: Building2 },
+  { label: 'Leave Management', href: '/dashboard/leaves', icon: Calendar },
+  { label: 'My Attendance', href: '/dashboard/attendance', icon: ClipboardList },
+  { label: 'Profile', href: '/dashboard/profile', icon: Users },
 ];
 
 export function InterviewerDashboard() {
+  const [drives, setDrives] = React.useState<PlacementDrive[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await recruitmentAPI.getMyDrives();
+        setDrives(response.data || []);
+      } catch (error) {
+        console.error('Error fetching drives:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Calculate stats
+  const totalDrives = drives.length;
+  const upcomingDrives = drives.filter(d => new Date(d.driveDate) >= new Date()).length;
+  const completedDrives = totalDrives - upcomingDrives;
+  const totalStudents = drives.reduce((acc, d) => acc + d._count.students, 0);
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: '#ffffff',
+    borderRadius: '16px',
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    overflow: 'hidden',
+  };
+
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Stats */}
       <StatsGrid>
         <StatsCard
-          title="Scheduled Interviews"
-          value={stats.scheduledInterviews}
-          trend={{ value: 2, label: 'today' }}
-          icon={Video}
+          title="Assigned Drives"
+          value={totalDrives}
+          icon={Building2}
         />
         <StatsCard
-          title="Completed This Month"
-          value={stats.completedThisMonth}
+          title="Upcoming Drives"
+          value={upcomingDrives}
+          icon={Clock}
+        />
+        <StatsCard
+          title="Completed Drives"
+          value={completedDrives}
           icon={CheckCircle}
         />
         <StatsCard
-          title="Pending Evaluations"
-          value={stats.pendingEvaluations}
-          icon={ClipboardList}
-        />
-        <StatsCard
-          title="Selection Rate"
-          value={`${stats.passRate}%`}
-          trend={{ value: 5, label: 'from last month' }}
-          icon={TrendingUp}
+          title="Total Students"
+          value={totalStudents}
+          icon={GraduationCap}
         />
       </StatsGrid>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Upcoming Interviews */}
-        <div className="card">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold">Upcoming Interviews</h3>
-            <p className="text-sm text-muted-foreground mt-1">Your scheduled interviews</p>
+      {/* Assigned Drives */}
+      <div style={cardStyle}>
+        <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#111827' }}>
+              My Assigned Drives
+            </h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#6b7280' }}>
+              Placement drives you are assigned to interview
+            </p>
           </div>
-          <div className="divide-y divide-border">
-            {upcomingInterviews.map((interview) => (
-              <div key={interview.id} className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-medium">
-                      {interview.candidate.split(' ').map(n => n[0]).join('')}
+          <Link
+            href="/dashboard/my-drives"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              color: '#7c3aed',
+              fontSize: '14px',
+              fontWeight: 500,
+              textDecoration: 'none',
+            }}
+          >
+            View All
+            <ChevronRight style={{ width: '16px', height: '16px' }} />
+          </Link>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+            <Loader2 style={{ height: '32px', width: '32px', color: '#7c3aed', animation: 'spin 1s linear infinite' }} />
+          </div>
+        ) : drives.length === 0 ? (
+          <div style={{ padding: '60px', textAlign: 'center' }}>
+            <Building2 style={{ height: '48px', width: '48px', color: '#d1d5db', margin: '0 auto 16px' }} />
+            <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
+              No placement drives assigned yet
+            </p>
+            <p style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>
+              HR will assign you to placement drives for interviewing
+            </p>
+          </div>
+        ) : (
+          <div>
+            {drives.slice(0, 5).map((drive, index) => {
+              const isUpcoming = new Date(drive.driveDate) >= new Date();
+
+              return (
+                <Link
+                  key={drive.id}
+                  href="/dashboard/my-drives"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '16px 20px',
+                    borderBottom: index < Math.min(drives.length - 1, 4) ? '1px solid #f1f5f9' : 'none',
+                    textDecoration: 'none',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f3ff'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div
+                      style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '12px',
+                        background: 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Building2 style={{ width: '24px', height: '24px', color: '#7c3aed' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-medium">{interview.candidate}</p>
-                      <p className="text-xs text-muted-foreground">{interview.position}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{interview.drive}</p>
+                      <p style={{ margin: 0, fontSize: '15px', fontWeight: 500, color: '#111827' }}>
+                        {drive.collegeName}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: '#6b7280' }}>
+                          <Calendar style={{ width: '14px', height: '14px' }} />
+                          {new Date(drive.driveDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: '#6b7280' }}>
+                          <GraduationCap style={{ width: '14px', height: '14px' }} />
+                          {drive._count.students} students
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <Badge variant="primary">{interview.round}</Badge>
-                    <p className="text-xs text-muted-foreground mt-1">{interview.time}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: isUpcoming ? '#dcfce7' : '#f3f4f6',
+                        color: isUpcoming ? '#166534' : '#6b7280',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {isUpcoming ? 'Upcoming' : 'Completed'}
+                    </span>
+                    <ChevronRight style={{ width: '20px', height: '20px', color: '#9ca3af' }} />
                   </div>
-                </div>
-              </div>
-            ))}
+                </Link>
+              );
+            })}
           </div>
-          <div className="p-3 border-t border-border">
-            <button className="w-full text-sm text-primary hover:underline">
-              View all interviews
-            </button>
-          </div>
-        </div>
-
-        {/* Pending Evaluations */}
-        <div className="card">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold">Pending Evaluations</h3>
-              <p className="text-sm text-muted-foreground mt-1">Submit your feedback</p>
-            </div>
-            <Badge variant="warning">{pendingEvaluations.length}</Badge>
-          </div>
-          <div className="divide-y divide-border">
-            {pendingEvaluations.map((evaluation) => (
-              <div key={evaluation.id} className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{evaluation.candidate}</p>
-                  <p className="text-xs text-muted-foreground">{evaluation.position}</p>
-                  <p className="text-xs text-muted-foreground">{evaluation.drive}</p>
-                </div>
-                <div className="text-right">
-                  <button className="btn-primary text-xs py-1 px-3">
-                    Evaluate
-                  </button>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {evaluation.interviewDate}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Charts & Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <ChartCard
-          title="My Evaluations"
-          subtitle="This month's interview outcomes"
-        >
-          <DonutChart data={evaluationStats} />
-        </ChartCard>
-
-        <div className="lg:col-span-2">
-          <ActivityFeed
-            activities={recentActivities}
-            title="Recent Activity"
-            subtitle="Your interview activities"
-            showViewAll
-          />
+      {/* Interviewer Tips */}
+      <div style={cardStyle}>
+        <div style={{ padding: '20px' }}>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600, color: '#111827' }}>
+            Interviewer Guidelines
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+            <div style={{ padding: '16px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <CheckCircle style={{ width: '20px', height: '20px', color: '#16a34a' }} />
+                <span style={{ fontWeight: 600, color: '#166534', fontSize: '14px' }}>Round 1 - Technical</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: '#15803d' }}>
+                Assess coding skills, problem-solving, and technical knowledge
+              </p>
+            </div>
+            <div style={{ padding: '16px', backgroundColor: '#fef3c7', borderRadius: '12px', border: '1px solid #fde68a' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <Clock style={{ width: '20px', height: '20px', color: '#d97706' }} />
+                <span style={{ fontWeight: 600, color: '#92400e', fontSize: '14px' }}>On Hold</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: '#a16207' }}>
+                Use when candidate needs further review or additional assessment
+              </p>
+            </div>
+            <div style={{ padding: '16px', backgroundColor: '#ede9fe', borderRadius: '12px', border: '1px solid #ddd6fe' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <TrendingUp style={{ width: '20px', height: '20px', color: '#7c3aed' }} />
+                <span style={{ fontWeight: 600, color: '#6d28d9', fontSize: '14px' }}>Round 2 - Advanced</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: '#7c3aed' }}>
+                Final technical round for candidates who passed Round 1
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Quick Actions */}
       <QuickActions actions={quickActions} />
+
+      <style jsx global>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

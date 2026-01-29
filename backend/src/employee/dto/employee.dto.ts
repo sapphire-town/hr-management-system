@@ -269,6 +269,28 @@ export class ChangePasswordDto {
   newPassword: string;
 }
 
+export interface BulkEmployeeRecord {
+  email: string;
+  firstName: string;
+  lastName: string;
+  userRole: string;
+  roleName: string;
+  salary: number;
+  phone?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  employeeType?: string;
+  joinDate?: string;
+  managerEmail?: string;
+}
+
+export interface BulkImportResult {
+  email: string;
+  status: 'success' | 'failed';
+  message?: string;
+  temporaryPassword?: string;
+}
+
 export class EmployeeFilterDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -289,6 +311,11 @@ export class EmployeeFilterDto {
   @IsOptional()
   @IsEnum(EmployeeType)
   employeeType?: EmployeeType;
+
+  @ApiPropertyOptional({ description: 'Filter by active status: true, false, or all' })
+  @IsOptional()
+  @IsString()
+  status?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
