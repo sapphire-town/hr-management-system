@@ -17,7 +17,10 @@ import {
   ArrowLeft,
   Save,
   AlertCircle,
+  History,
+  X,
 } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
 import { recruitmentAPI } from '@/lib/api-client';
@@ -29,6 +32,23 @@ interface Evaluation {
   comments?: string;
   evaluator: { firstName: string; lastName: string };
   evaluatedAt: string;
+}
+
+interface EvaluationHistoryEntry {
+  id: string;
+  evaluationId: string;
+  previousStatus: 'PASS' | 'FAIL' | 'ON_HOLD' | null;
+  newStatus: 'PASS' | 'FAIL' | 'ON_HOLD';
+  previousComments: string | null;
+  newComments: string | null;
+  editedBy: string;
+  editedAt: string;
+  editor: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    user: { role: string };
+  };
 }
 
 interface Student {
@@ -73,6 +93,9 @@ export default function MyDrivesPage() {
     status: '' as 'PASS' | 'FAIL' | 'ON_HOLD' | '',
     comments: '',
   });
+  const [viewingHistory, setViewingHistory] = React.useState<string | null>(null);
+  const [evaluationHistory, setEvaluationHistory] = React.useState<EvaluationHistoryEntry[]>([]);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
 
   const fetchMyDrives = React.useCallback(async () => {
     try {
@@ -157,6 +180,25 @@ export default function MyDrivesPage() {
     } finally {
       setEvaluating(false);
     }
+  };
+
+  const fetchEvaluationHistory = async (evaluationId: string) => {
+    try {
+      setLoadingHistory(true);
+      setViewingHistory(evaluationId);
+      const response = await recruitmentAPI.getEvaluationHistory(evaluationId);
+      setEvaluationHistory(response.data);
+    } catch (error) {
+      console.error('Failed to fetch evaluation history:', error);
+      alert('Failed to load evaluation history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const closeHistoryModal = () => {
+    setViewingHistory(null);
+    setEvaluationHistory([]);
   };
 
   const getStudentRound1Status = (student: Student) => {
@@ -593,6 +635,24 @@ export default function MyDrivesPage() {
                               <span style={{ fontSize: '13px', fontWeight: 600, color: statusConfig[evaluation.status].color }}>
                                 Round {evaluation.roundNumber}: {statusConfig[evaluation.status].label}
                               </span>
+                              <button
+                                onClick={() => fetchEvaluationHistory(evaluation.id)}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '11px',
+                                  color: '#7c3aed',
+                                  background: 'white',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <History style={{ width: '12px', height: '12px' }} />
+                                View Edits
+                              </button>
                             </div>
                             <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
                               by {evaluation.evaluator.firstName} {evaluation.evaluator.lastName}
@@ -765,6 +825,207 @@ export default function MyDrivesPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Audit Trail Modal */}
+      {viewingHistory && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={closeHistoryModal}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ padding: '24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#111827' }}>
+                  Evaluation Edit History
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#6b7280' }}>
+                  Complete audit trail of all changes
+                </p>
+              </div>
+              <button
+                onClick={closeHistoryModal}
+                style={{
+                  padding: '8px',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X style={{ width: '20px', height: '20px', color: '#6b7280' }} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '24px' }}>
+              {loadingHistory ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: '#6b7280' }}>
+                  Loading history...
+                </div>
+              ) : evaluationHistory.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px' }}>
+                  <History style={{ width: '48px', height: '48px', margin: '0 auto 16px', color: '#d1d5db' }} />
+                  <p style={{ fontSize: '16px', fontWeight: 500, color: '#111827', margin: '0 0 8px' }}>
+                    No edit history
+                  </p>
+                  <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
+                    This evaluation has not been edited yet.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {evaluationHistory.map((entry, index) => (
+                    <div
+                      key={entry.id}
+                      style={{
+                        padding: '16px',
+                        borderLeft: '3px solid #7c3aed',
+                        backgroundColor: '#faf5ff',
+                        borderRadius: '8px',
+                      }}
+                    >
+                      {/* Editor info */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <div
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            backgroundColor: '#7c3aed',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {entry.editor.firstName[0]}{entry.editor.lastName[0]}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#111827' }}>
+                            {entry.editor.firstName} {entry.editor.lastName}
+                          </p>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
+                            {formatDistanceToNow(new Date(entry.editedAt), { addSuffix: true })}
+                          </p>
+                        </div>
+                        <span
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            color: '#7c3aed',
+                            backgroundColor: '#ede9fe',
+                            borderRadius: '6px',
+                          }}
+                        >
+                          Edit #{evaluationHistory.length - index}
+                        </span>
+                      </div>
+
+                      {/* Changes */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {/* Status change */}
+                        {entry.previousStatus && entry.previousStatus !== entry.newStatus && (
+                          <div style={{ fontSize: '13px' }}>
+                            <span style={{ color: '#6b7280' }}>Status: </span>
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                backgroundColor: statusConfig[entry.previousStatus].bg,
+                                color: statusConfig[entry.previousStatus].color,
+                                fontWeight: 500,
+                                textDecoration: 'line-through',
+                              }}
+                            >
+                              {statusConfig[entry.previousStatus].label}
+                            </span>
+                            <span style={{ margin: '0 8px', color: '#6b7280' }}>→</span>
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                backgroundColor: statusConfig[entry.newStatus].bg,
+                                color: statusConfig[entry.newStatus].color,
+                                fontWeight: 600,
+                              }}
+                            >
+                              {statusConfig[entry.newStatus].label}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Comments change */}
+                        {(entry.previousComments !== entry.newComments) && (
+                          <div style={{ fontSize: '13px' }}>
+                            <span style={{ color: '#6b7280', display: 'block', marginBottom: '4px' }}>Comments updated:</span>
+                            {entry.previousComments && (
+                              <div
+                                style={{
+                                  padding: '8px',
+                                  backgroundColor: '#fee2e2',
+                                  borderRadius: '4px',
+                                  marginBottom: '4px',
+                                }}
+                              >
+                                <span style={{ color: '#991b1b', textDecoration: 'line-through', fontSize: '12px', fontStyle: 'italic' }}>
+                                  "{entry.previousComments}"
+                                </span>
+                              </div>
+                            )}
+                            {entry.newComments && (
+                              <div
+                                style={{
+                                  padding: '8px',
+                                  backgroundColor: '#d1fae5',
+                                  borderRadius: '4px',
+                                }}
+                              >
+                                <span style={{ color: '#065f46', fontSize: '12px', fontStyle: 'italic' }}>
+                                  "{entry.newComments}"
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

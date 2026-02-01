@@ -3,8 +3,11 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, Menu, LogOut, User, Settings } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { useAuthStore } from '@/store/auth-store';
 import { useUIStore } from '@/store/ui-store';
+import { useNotificationStore } from '@/store/notification-store';
+import { notificationAPI } from '@/lib/api-client';
 import { ROLE_LABELS } from '@/lib/constants';
 import { SearchInput } from '@/components/ui/search-input';
 import { AvatarWithFallback } from '@/components/ui/avatar';
@@ -22,13 +25,34 @@ export function Header() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const { sidebarCollapsed, setMobileSidebarOpen } = useUIStore();
+  const { notifications, unreadCount, setNotifications, markAsRead } = useNotificationStore();
   const [isLargeScreen, setIsLargeScreen] = React.useState(true);
   const [isMediumScreen, setIsMediumScreen] = React.useState(true);
-  const [notifications] = React.useState([
-    { id: 1, title: 'New leave request', time: '5m ago', read: false },
-    { id: 2, title: 'Document approved', time: '1h ago', read: false },
-    { id: 3, title: 'Team meeting at 3 PM', time: '2h ago', read: true },
-  ]);
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  // Fetch notifications on mount and set up polling
+  React.useEffect(() => {
+    const fetchNotifications = async () => {
+      if (!user?.id) return;
+
+      try {
+        setIsLoading(true);
+        const response = await notificationAPI.getMy();
+        setNotifications(response.data);
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchNotifications();
+
+    // Poll every 30 seconds for new notifications
+    const interval = setInterval(fetchNotifications, 30000);
+
+    return () => clearInterval(interval);
+  }, [user?.id, setNotifications]);
 
   React.useEffect(() => {
     const checkScreenSize = () => {
@@ -40,7 +64,25 @@ export function Header() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const handleNotificationClick = async (notification: any) => {
+    // Mark as read if unread
+    if (!notification.isRead) {
+      try {
+        await notificationAPI.markAsRead(notification.id);
+        markAsRead(notification.id);
+      } catch (error) {
+        console.error('Failed to mark notification as read:', error);
+      }
+    }
+
+    // Navigate based on notification type and metadata
+    if (notification.metadata?.driveId) {
+      router.push(`/dashboard/my-drives?driveId=${notification.metadata.driveId}`);
+    } else {
+      // Default to notifications page
+      router.push('/dashboard/notifications');
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -166,26 +208,39 @@ export function Header() {
                 )}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {notifications.length === 0 ? (
+              {isLoading ? (
+                <div style={{ padding: '16px', textAlign: 'center', fontSize: '14px', color: '#6b7280' }}>
+                  Loading...
+                </div>
+              ) : notifications.length === 0 ? (
                 <div style={{ padding: '16px', textAlign: 'center', fontSize: '14px', color: '#6b7280' }}>
                   No notifications
                 </div>
               ) : (
-                notifications.map((notification) => (
+                notifications.slice(0, 5).map((notification) => (
                   <DropdownMenuItem
                     key={notification.id}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '12px' }}
+                    onClick={() => handleNotificationClick(notification)}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      cursor: 'pointer',
+                      backgroundColor: notification.isRead ? 'transparent' : '#faf5ff',
+                    }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
                       <span
                         style={{
                           fontSize: '14px',
-                          fontWeight: notification.read ? 400 : 500,
+                          fontWeight: notification.isRead ? 400 : 600,
+                          color: notification.isRead ? '#6b7280' : '#111827',
                         }}
                       >
-                        {notification.title}
+                        {notification.subject}
                       </span>
-                      {!notification.read && (
+                      {!notification.isRead && (
                         <span
                           style={{
                             marginLeft: 'auto',
@@ -197,14 +252,20 @@ export function Header() {
                         />
                       )}
                     </div>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                      {notification.time}
+                    <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                      {notification.message}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                      {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                     </span>
                   </DropdownMenuItem>
                 ))
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem style={{ justifyContent: 'center', color: '#7c3aed' }}>
+              <DropdownMenuItem
+                onClick={() => router.push('/dashboard/notifications')}
+                style={{ justifyContent: 'center', color: '#7c3aed', cursor: 'pointer' }}
+              >
                 View all notifications
               </DropdownMenuItem>
             </DropdownMenuContent>

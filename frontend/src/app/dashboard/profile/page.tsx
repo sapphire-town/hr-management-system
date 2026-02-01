@@ -620,6 +620,23 @@ export default function ProfilePage() {
           </div>
         </div>
       </Modal>
+      <style jsx global>{`
+        button[data-state='active'] {
+          background-color: white !important;
+          color: #7c3aed !important;
+          font-weight: 600 !important;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        }
+        button[data-state='inactive'] {
+          background-color: transparent !important;
+          color: #6b7280 !important;
+          font-weight: 500 !important;
+        }
+        button[data-state='inactive']:hover {
+          background-color: rgba(124, 58, 237, 0.05) !important;
+          color: #7c3aed !important;
+        }
+      `}</style>
     </DashboardLayout>
   );
 }

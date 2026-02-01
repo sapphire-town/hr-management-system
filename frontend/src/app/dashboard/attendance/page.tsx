@@ -12,6 +12,7 @@ import {
   Edit2,
   Trash2,
   Users,
+  LogOut,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,10 @@ interface CalendarDay {
   holidayName: string | null;
   status: string | null;
   notes: string | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  workingHours: number | null;
+  leaveType: string | null;
 }
 
 interface Holiday {
@@ -66,7 +71,13 @@ export default function AttendancePage() {
   const [currentDate, setCurrentDate] = React.useState(new Date());
   const [calendarData, setCalendarData] = React.useState<CalendarDay[]>([]);
   const [summary, setSummary] = React.useState<AttendanceSummary | null>(null);
-  const [todayStatus, setTodayStatus] = React.useState<{ marked: boolean; status: string | null } | null>(null);
+  const [todayStatus, setTodayStatus] = React.useState<{
+    marked: boolean;
+    status: string | null;
+    checkInTime: string | null;
+    checkOutTime: string | null;
+    workingHours: number | null;
+  } | null>(null);
   const [holidays, setHolidays] = React.useState<Holiday[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [marking, setMarking] = React.useState(false);
@@ -118,6 +129,18 @@ export default function AttendancePage() {
       await fetchData();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to mark attendance');
+    } finally {
+      setMarking(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      setMarking(true);
+      await attendanceAPI.checkOut();
+      await fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to check out');
     } finally {
       setMarking(false);
     }
@@ -216,13 +239,62 @@ export default function AttendancePage() {
               </p>
             </div>
             {todayStatus?.marked ? (
-              <div style={{
-                background: 'rgba(255,255,255,0.2)',
-                padding: '8px 20px',
-                borderRadius: '20px',
-                fontWeight: '600'
-              }}>
-                {STATUS_COLORS[todayStatus.status || '']?.label || todayStatus.status}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                <div style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  padding: '8px 20px',
+                  borderRadius: '20px',
+                  fontWeight: '600'
+                }}>
+                  {STATUS_COLORS[todayStatus.status || '']?.label || todayStatus.status}
+                </div>
+                {todayStatus.checkInTime && (
+                  <div style={{ fontSize: '13px', opacity: 0.9 }}>
+                    <span>In: {new Date(todayStatus.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    {todayStatus.checkOutTime && (
+                      <span style={{ marginLeft: '12px' }}>
+                        Out: {new Date(todayStatus.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                    {todayStatus.workingHours != null && (
+                      <span style={{ marginLeft: '12px' }}>
+                        ({todayStatus.workingHours}h)
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* Check Out button - shown only when checked in but not yet checked out */}
+                {todayStatus.checkInTime && !todayStatus.checkOutTime && (
+                  <Button
+                    onClick={handleCheckOut}
+                    disabled={marking}
+                    style={{
+                      background: '#ef4444',
+                      border: 'none',
+                      color: '#fff',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <LogOut style={{ height: '16px', width: '16px', marginRight: '8px' }} />
+                    {marking ? 'Checking out...' : 'Check Out'}
+                  </Button>
+                )}
+                {/* Already checked out indicator */}
+                {todayStatus.checkOutTime && (
+                  <div style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    padding: '6px 16px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    <CheckCircle style={{ height: '14px', width: '14px' }} />
+                    Day Complete
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ display: 'flex', gap: '12px' }}>
@@ -232,7 +304,7 @@ export default function AttendancePage() {
                   style={{ background: '#22c55e', border: 'none' }}
                 >
                   <CheckCircle style={{ height: '16px', width: '16px', marginRight: '8px' }} />
-                  Present
+                  {marking ? 'Marking...' : 'Present'}
                 </Button>
                 <Button
                   variant="outline"
@@ -406,6 +478,25 @@ export default function AttendancePage() {
                         {STATUS_COLORS[day.status]?.label || day.status}
                       </div>
                     )}
+                    {day.checkInTime && !day.isHoliday && (
+                      <div style={{
+                        fontSize: '9px',
+                        marginTop: '1px',
+                        color: '#6b7280'
+                      }}>
+                        {new Date(day.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                    {day.leaveType && !day.isHoliday && (
+                      <div style={{
+                        fontSize: '9px',
+                        marginTop: '1px',
+                        color: '#1e40af',
+                        fontWeight: 500
+                      }}>
+                        {day.leaveType}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -540,8 +631,40 @@ export default function AttendancePage() {
                     : 'Not Marked'}
                 </p>
               </div>
-              {selectedDay.notes && (
+              {selectedDay.checkInTime && (
                 <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '10px' }}>
+                  <p style={{ fontSize: '14px', color: '#6b7280', margin: '0 0 4px 0' }}>Check-In Time</p>
+                  <p style={{ fontWeight: '600', margin: 0, color: '#111827' }}>
+                    {new Date(selectedDay.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </p>
+                </div>
+              )}
+              {selectedDay.checkOutTime && (
+                <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '10px' }}>
+                  <p style={{ fontSize: '14px', color: '#6b7280', margin: '0 0 4px 0' }}>Check-Out Time</p>
+                  <p style={{ fontWeight: '600', margin: 0, color: '#111827' }}>
+                    {new Date(selectedDay.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </p>
+                </div>
+              )}
+              {selectedDay.workingHours != null && selectedDay.workingHours > 0 && (
+                <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '10px' }}>
+                  <p style={{ fontSize: '14px', color: '#6b7280', margin: '0 0 4px 0' }}>Working Hours</p>
+                  <p style={{ fontWeight: '600', margin: 0, color: '#111827' }}>
+                    {selectedDay.workingHours} hours
+                  </p>
+                </div>
+              )}
+              {selectedDay.leaveType && (
+                <div style={{ padding: '16px', background: '#dbeafe', borderRadius: '10px' }}>
+                  <p style={{ fontSize: '14px', color: '#1e40af', margin: '0 0 4px 0' }}>Leave Type</p>
+                  <p style={{ fontWeight: '600', margin: 0, color: '#1e40af' }}>
+                    {selectedDay.leaveType} Leave
+                  </p>
+                </div>
+              )}
+              {selectedDay.notes && (
+                <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '10px', gridColumn: selectedDay.checkInTime ? 'span 2' : undefined }}>
                   <p style={{ fontSize: '14px', color: '#6b7280', margin: '0 0 4px 0' }}>Notes</p>
                   <p style={{ fontWeight: '500', margin: 0, color: '#111827' }}>{selectedDay.notes}</p>
                 </div>

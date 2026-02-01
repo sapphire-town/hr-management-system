@@ -20,6 +20,8 @@ import {
   Video,
   ClipboardList,
   Briefcase,
+  Ticket,
+  BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -52,6 +54,13 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
         { label: 'Reports', href: '/dashboard/reports', icon: FileText },
         { label: 'Hiring Requests', href: '/dashboard/hiring', icon: UserPlus },
         { label: 'Resignations', href: '/dashboard/resignation/manage', icon: UserMinus },
+        { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
+      ],
+    },
+    {
+      title: 'Insights',
+      items: [
+        { label: 'Feedback Reports', href: '/dashboard/feedback/reports', icon: BarChart3 },
       ],
     },
     {
@@ -75,6 +84,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
         { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
         { label: 'Documents', href: '/dashboard/documents', icon: FileText },
         { label: 'Payroll', href: '/dashboard/payroll', icon: DollarSign },
+        { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
       ],
     },
     {
@@ -89,6 +99,12 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       title: 'Recruitment',
       items: [
         { label: 'Recruitment', href: '/dashboard/recruitment', icon: Search },
+      ],
+    },
+    {
+      title: 'Insights',
+      items: [
+        { label: 'Feedback Reports', href: '/dashboard/feedback/reports', icon: BarChart3 },
       ],
     },
   ],
@@ -112,6 +128,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
         { label: 'Performance', href: '/dashboard/performance', icon: TrendingUp },
+        { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
       ],
     },
   ],
@@ -141,6 +158,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Asset Requests', href: '/dashboard/assets', icon: Package },
         { label: 'Reimbursements', href: '/dashboard/reimbursements', icon: Receipt },
+        { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
         { label: 'Feedback', href: '/dashboard/feedback', icon: MessageSquare },
       ],
     },
@@ -184,6 +202,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Asset Requests', href: '/dashboard/assets', icon: Package },
         { label: 'Reimbursements', href: '/dashboard/reimbursements', icon: Receipt },
+        { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
         { label: 'Feedback', href: '/dashboard/feedback', icon: MessageSquare },
       ],
     },

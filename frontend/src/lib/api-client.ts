@@ -120,6 +120,7 @@ export const leaveAPI = {
 export const attendanceAPI = {
   mark: (data: { status: string; notes?: string }) =>
     apiClient.post('/attendance/mark', data),
+  checkOut: () => apiClient.post('/attendance/checkout'),
   bulkMark: (data: { date: string; records: Array<{ employeeId: string; status: string; notes?: string }> }) =>
     apiClient.post('/attendance/bulk', data),
   getTodayStatus: () => apiClient.get('/attendance/today'),
@@ -206,6 +207,9 @@ export const ticketAPI = {
   create: (data: any) => apiClient.post('/ticket', data),
   getMyTickets: () => apiClient.get('/ticket/my'),
   getAssignedTickets: () => apiClient.get('/ticket/assigned'),
+  getAll: (params?: any) => apiClient.get('/ticket/all', { params }),
+  getById: (id: string) => apiClient.get(`/ticket/${id}`),
+  getStatistics: () => apiClient.get('/ticket/statistics'),
   updateStatus: (id: string, status: string) =>
     apiClient.patch(`/ticket/${id}/status`, { status }),
   addComment: (id: string, comment: string) =>
@@ -379,6 +383,8 @@ export const recruitmentAPI = {
   // Evaluations
   evaluateStudent: (studentId: string, round: number, data: { status: string; comments?: string }) =>
     apiClient.post(`/recruitment/students/${studentId}/evaluate/${round}`, data),
+  getEvaluationHistory: (evaluationId: string) =>
+    apiClient.get(`/recruitment/evaluations/${evaluationId}/history`),
 
   // Statistics
   getOverallStatistics: () => apiClient.get('/recruitment/statistics'),
