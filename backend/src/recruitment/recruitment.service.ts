@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   CreatePlacementDriveDto,
   UpdatePlacementDriveDto,
@@ -17,7 +18,10 @@ import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class RecruitmentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   // ==================== PLACEMENT DRIVES ====================
 
@@ -133,7 +137,29 @@ export class RecruitmentService {
       throw new NotFoundException('Placement drive not found');
     }
 
-    return this.prisma.placementDrive.update({
+    // Track changes for notification
+    const changes: Array<{ field: string; oldValue: any; newValue: any }> = [];
+
+    if (dto.collegeName && dto.collegeName !== drive.collegeName) {
+      changes.push({ field: 'College Name', oldValue: drive.collegeName, newValue: dto.collegeName });
+    }
+
+    if (dto.driveDate) {
+      const newDate = new Date(dto.driveDate);
+      if (newDate.getTime() !== drive.driveDate.getTime()) {
+        changes.push({
+          field: 'Drive Date',
+          oldValue: drive.driveDate.toISOString(),
+          newValue: newDate.toISOString()
+        });
+      }
+    }
+
+    if (dto.roles && JSON.stringify(dto.roles) !== JSON.stringify(drive.roles)) {
+      changes.push({ field: 'Roles', oldValue: drive.roles, newValue: dto.roles });
+    }
+
+    const updatedDrive = await this.prisma.placementDrive.update({
       where: { id },
       data: {
         collegeName: dto.collegeName,
@@ -151,6 +177,13 @@ export class RecruitmentService {
         _count: { select: { students: true } },
       },
     });
+
+    // Send notifications if there are changes
+    if (changes.length > 0) {
+      await this.notificationService.notifyDriveUpdated(id, changes);
+    }
+
+    return updatedDrive;
   }
 
   async deleteDrive(id: string) {
@@ -184,6 +217,15 @@ export class RecruitmentService {
       throw new BadRequestException('Some interviewers are not valid or do not have interviewer permissions');
     }
 
+    // Get existing interviewers before any changes
+    const existingInterviewers = await this.prisma.placementDriveInterviewer.findMany({
+      where: { driveId },
+      select: { interviewerId: true },
+    });
+
+    const existingIds = existingInterviewers.map((i) => i.interviewerId);
+    const newIds = dto.interviewerIds.filter((id) => !existingIds.includes(id));
+
     // Remove existing interviewers not in the new list
     await this.prisma.placementDriveInterviewer.deleteMany({
       where: {
@@ -193,14 +235,6 @@ export class RecruitmentService {
     });
 
     // Add new interviewers
-    const existingInterviewers = await this.prisma.placementDriveInterviewer.findMany({
-      where: { driveId },
-      select: { interviewerId: true },
-    });
-
-    const existingIds = existingInterviewers.map((i) => i.interviewerId);
-    const newIds = dto.interviewerIds.filter((id) => !existingIds.includes(id));
-
     if (newIds.length > 0) {
       await this.prisma.placementDriveInterviewer.createMany({
         data: newIds.map((interviewerId) => ({
@@ -208,6 +242,9 @@ export class RecruitmentService {
           interviewerId,
         })),
       });
+
+      // Send notifications to newly assigned interviewers
+      await this.notificationService.notifyInterviewersAssigned(newIds, driveId);
     }
 
     return this.findDriveById(driveId);
@@ -288,6 +325,11 @@ export class RecruitmentService {
       })),
     });
 
+    // Send notifications to all assigned interviewers
+    if (result.count > 0) {
+      await this.notificationService.notifyStudentAdded(driveId, result.count);
+    }
+
     return { count: result.count, message: `${result.count} students added successfully` };
   }
 
@@ -359,7 +401,14 @@ export class RecruitmentService {
       }
     }
 
-    return this.prisma.roundEvaluation.upsert({
+    // Get existing evaluation to track changes for audit trail
+    const existingEvaluation = await this.prisma.roundEvaluation.findUnique({
+      where: {
+        studentId_roundNumber: { studentId, roundNumber },
+      },
+    });
+
+    const evaluation = await this.prisma.roundEvaluation.upsert({
       where: {
         studentId_roundNumber: { studentId, roundNumber },
       },
@@ -380,6 +429,39 @@ export class RecruitmentService {
         student: { select: { name: true, email: true } },
         evaluator: { select: { firstName: true, lastName: true } },
       },
+    });
+
+    // Create audit trail entry if this is an edit (not a new evaluation)
+    if (existingEvaluation) {
+      await this.prisma.roundEvaluationHistory.create({
+        data: {
+          evaluationId: evaluation.id,
+          previousStatus: existingEvaluation.status,
+          newStatus: dto.status,
+          previousComments: existingEvaluation.comments,
+          newComments: dto.comments,
+          editedBy: evaluatorId,
+        },
+      });
+    }
+
+    return evaluation;
+  }
+
+  async getEvaluationHistory(evaluationId: string) {
+    return this.prisma.roundEvaluationHistory.findMany({
+      where: { evaluationId },
+      include: {
+        editor: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            user: { select: { role: true } },
+          },
+        },
+      },
+      orderBy: { editedAt: 'desc' },
     });
   }
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   UpdateCompanySettingsDto,
   UpdateLeavePoliciesDto,
@@ -10,7 +11,10 @@ const DEFAULT_SETTINGS_ID = 'default-company-settings';
 
 @Injectable()
 export class SettingsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Get current settings (create default if none exists)
@@ -53,7 +57,7 @@ export class SettingsService {
   async updateCompanyInfo(dto: UpdateCompanySettingsDto, updatedBy: string) {
     const settings = await this.getSettings();
 
-    return this.prisma.companySettings.update({
+    const result = await this.prisma.companySettings.update({
       where: { id: settings.id },
       data: {
         ...(dto.companyName && { companyName: dto.companyName }),
@@ -63,6 +67,29 @@ export class SettingsService {
         updatedBy,
       },
     });
+
+    // Build change summary for notification
+    const changes: string[] = [];
+    if (dto.companyName) changes.push(`Company name updated to "${dto.companyName}"`);
+    if (dto.workingHoursStart || dto.workingHoursEnd) {
+      changes.push(`Working hours changed to ${dto.workingHoursStart || settings.workingHoursStart} - ${dto.workingHoursEnd || settings.workingHoursEnd}`);
+    }
+    if (dto.workingDays) {
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const days = dto.workingDays.map((d) => dayNames[d]).join(', ');
+      changes.push(`Working days updated to ${days}`);
+    }
+
+    if (changes.length > 0) {
+      await this.notificationService.notifyAllEmployees(
+        'Company Settings Updated',
+        changes.join('. ') + '.',
+        undefined,
+        { changeType: 'company_info', changes },
+      );
+    }
+
+    return result;
   }
 
   /**
@@ -82,13 +109,45 @@ export class SettingsService {
       ...(dto.maxCarryForward !== undefined && { maxCarryForward: dto.maxCarryForward }),
     };
 
-    return this.prisma.companySettings.update({
+    const result = await this.prisma.companySettings.update({
       where: { id: settings.id },
       data: {
         leavePolicies: updatedPolicies,
         updatedBy,
       },
     });
+
+    // Build change summary for notification
+    const changes: string[] = [];
+    if (dto.sickLeavePerYear !== undefined && dto.sickLeavePerYear !== currentPolicies.sickLeavePerYear) {
+      changes.push(`Sick leave changed from ${currentPolicies.sickLeavePerYear || 0} to ${dto.sickLeavePerYear} days/year`);
+    }
+    if (dto.casualLeavePerYear !== undefined && dto.casualLeavePerYear !== currentPolicies.casualLeavePerYear) {
+      changes.push(`Casual leave changed from ${currentPolicies.casualLeavePerYear || 0} to ${dto.casualLeavePerYear} days/year`);
+    }
+    if (dto.earnedLeavePerYear !== undefined && dto.earnedLeavePerYear !== currentPolicies.earnedLeavePerYear) {
+      changes.push(`Earned leave changed from ${currentPolicies.earnedLeavePerYear || 0} to ${dto.earnedLeavePerYear} days/year`);
+    }
+    if (dto.maxConsecutiveDays !== undefined && dto.maxConsecutiveDays !== currentPolicies.maxConsecutiveDays) {
+      changes.push(`Max consecutive leave days changed to ${dto.maxConsecutiveDays}`);
+    }
+    if (dto.carryForwardAllowed !== undefined && dto.carryForwardAllowed !== currentPolicies.carryForwardAllowed) {
+      changes.push(`Leave carry forward ${dto.carryForwardAllowed ? 'enabled' : 'disabled'}`);
+    }
+    if (dto.maxCarryForward !== undefined && dto.maxCarryForward !== currentPolicies.maxCarryForward) {
+      changes.push(`Max carry forward days changed to ${dto.maxCarryForward}`);
+    }
+
+    if (changes.length > 0) {
+      await this.notificationService.notifyAllEmployees(
+        'Leave Policy Updated',
+        changes.join('. ') + '.',
+        undefined,
+        { changeType: 'leave_policy', changes },
+      );
+    }
+
+    return result;
   }
 
   /**
@@ -105,13 +164,36 @@ export class SettingsService {
       ...(dto.reminderDaysBefore !== undefined && { reminderDaysBefore: dto.reminderDaysBefore }),
     };
 
-    return this.prisma.companySettings.update({
+    const result = await this.prisma.companySettings.update({
       where: { id: settings.id },
       data: {
         notificationPreferences: updatedPrefs,
         updatedBy,
       },
     });
+
+    // Build change summary for notification
+    const changes: string[] = [];
+    if (dto.emailNotifications !== undefined && dto.emailNotifications !== currentPrefs.emailNotifications) {
+      changes.push(`Email notifications ${dto.emailNotifications ? 'enabled' : 'disabled'}`);
+    }
+    if (dto.inAppNotifications !== undefined && dto.inAppNotifications !== currentPrefs.inAppNotifications) {
+      changes.push(`In-app notifications ${dto.inAppNotifications ? 'enabled' : 'disabled'}`);
+    }
+    if (dto.reminderDaysBefore !== undefined && dto.reminderDaysBefore !== currentPrefs.reminderDaysBefore) {
+      changes.push(`Reminder notifications now sent ${dto.reminderDaysBefore} days before deadlines`);
+    }
+
+    if (changes.length > 0) {
+      await this.notificationService.notifyAllEmployees(
+        'Notification Preferences Updated',
+        changes.join('. ') + '.',
+        undefined,
+        { changeType: 'notification_preferences', changes },
+      );
+    }
+
+    return result;
   }
 
   /**
@@ -173,6 +255,14 @@ export class SettingsService {
 
       return updateResult;
     });
+
+    // Notify all employees about the leave system reset
+    await this.notificationService.notifyAllEmployees(
+      'Leave System Reset',
+      `The company leave system has been reset to default values. Your new leave balances are: Sick Leave: ${defaultLeavePolicies.sickLeavePerYear} days, Casual Leave: ${defaultLeavePolicies.casualLeavePerYear} days, Earned Leave: ${defaultLeavePolicies.earnedLeavePerYear} days.`,
+      undefined,
+      { changeType: 'leave_reset', leavePolicies: defaultLeavePolicies, employeesUpdated: result.count },
+    );
 
     return {
       message: `Reset leave system successfully. Updated ${result.count} employees with balances: sick=12, casual=12, earned=15.`,

@@ -4,9 +4,10 @@ import { LeaveService } from './leave.service';
 import { HolidayController } from './holiday.controller';
 import { HolidayService } from './holiday.service';
 import { NotificationModule } from '../notification/notification.module';
+import { AttendanceModule } from '../attendance/attendance.module';
 
 @Module({
-  imports: [NotificationModule],
+  imports: [NotificationModule, AttendanceModule],
   controllers: [LeaveController, HolidayController],
   providers: [LeaveService, HolidayService],
   exports: [LeaveService, HolidayService],

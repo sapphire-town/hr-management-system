@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../common/prisma/prisma.service';
 import {
   MarkAttendanceDto,
@@ -21,6 +22,7 @@ export class AttendanceService {
   async markAttendance(employeeId: string, dto: MarkAttendanceDto) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const now = new Date();
 
     // Check if attendance already marked
     const existing = await this.prisma.attendance.findFirst({
@@ -31,24 +33,64 @@ export class AttendanceService {
     });
 
     if (existing) {
-      // Update existing
+      // Update existing - record checkOutTime on re-mark
+      const workingHours = existing.checkInTime
+        ? parseFloat(((now.getTime() - existing.checkInTime.getTime()) / (1000 * 60 * 60)).toFixed(2))
+        : null;
+
       return this.prisma.attendance.update({
         where: { id: existing.id },
         data: {
           status: dto.status,
           notes: dto.notes,
+          checkOutTime: now,
+          workingHours,
         },
       });
     }
 
-    // Create new
+    // Create new - record checkInTime
     return this.prisma.attendance.create({
       data: {
         employee: { connect: { id: employeeId } },
         date: today,
         status: dto.status,
+        checkInTime: now,
         markedBy: employeeId,
         notes: dto.notes,
+      },
+    });
+  }
+
+  async checkOut(employeeId: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+
+    const existing = await this.prisma.attendance.findFirst({
+      where: {
+        employeeId,
+        date: today,
+      },
+    });
+
+    if (!existing) {
+      throw new BadRequestException('You have not checked in today. Please mark your attendance first.');
+    }
+
+    if (existing.checkOutTime) {
+      throw new BadRequestException('You have already checked out today.');
+    }
+
+    const workingHours = existing.checkInTime
+      ? parseFloat(((now.getTime() - existing.checkInTime.getTime()) / (1000 * 60 * 60)).toFixed(2))
+      : null;
+
+    return this.prisma.attendance.update({
+      where: { id: existing.id },
+      data: {
+        checkOutTime: now,
+        workingHours,
       },
     });
   }
@@ -260,6 +302,9 @@ export class AttendanceService {
       marked: !!record,
       status: record?.status || null,
       notes: record?.notes || null,
+      checkInTime: record?.checkInTime || null,
+      checkOutTime: record?.checkOutTime || null,
+      workingHours: record?.workingHours || null,
     };
   }
 
@@ -408,12 +453,12 @@ export class AttendanceService {
     });
   }
 
-  // Get calendar with holidays
+  // Get calendar with holidays and approved leaves
   async getCalendarWithHolidays(employeeId: string, month: number, year: number) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
 
-    const [attendanceRecords, holidays] = await Promise.all([
+    const [attendanceRecords, holidays, approvedLeaves] = await Promise.all([
       this.prisma.attendance.findMany({
         where: {
           employeeId,
@@ -433,6 +478,18 @@ export class AttendanceService {
         },
         orderBy: { date: 'asc' },
       }),
+      // Fetch approved leaves that overlap with this month
+      this.prisma.leave.findMany({
+        where: {
+          employeeId,
+          status: 'APPROVED',
+          OR: [
+            { startDate: { gte: startDate, lte: endDate } },
+            { endDate: { gte: startDate, lte: endDate } },
+            { startDate: { lte: startDate }, endDate: { gte: endDate } },
+          ],
+        },
+      }),
     ]);
 
     // Create a map of dates to attendance
@@ -444,6 +501,22 @@ export class AttendanceService {
     const holidayMap = new Map(
       holidays.map((h) => [h.date.toISOString().split('T')[0], h])
     );
+
+    // Build a set of dates covered by approved leaves
+    const leaveMap = new Map<string, { leaveType: string; reason: string }>();
+    for (const leave of approvedLeaves) {
+      const leaveStart = new Date(Math.max(leave.startDate.getTime(), startDate.getTime()));
+      const leaveEnd = new Date(Math.min(leave.endDate.getTime(), endDate.getTime()));
+      for (let d = new Date(leaveStart); d <= leaveEnd; d.setDate(d.getDate() + 1)) {
+        const dayOfWeek = d.getDay();
+        // Skip weekends
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+        const dStr = d.toISOString().split('T')[0];
+        // Skip holidays
+        if (holidayMap.has(dStr)) continue;
+        leaveMap.set(dStr, { leaveType: leave.leaveType, reason: leave.reason });
+      }
+    }
 
     // Generate calendar data for each day of the month
     const daysInMonth = endDate.getDate();
@@ -457,6 +530,18 @@ export class AttendanceService {
 
       const attendance = attendanceMap.get(dateStr);
       const holiday = holidayMap.get(dateStr);
+      const leaveInfo = leaveMap.get(dateStr);
+
+      // Determine status: attendance record takes priority, then leave
+      let status = attendance?.status || null;
+      let notes = attendance?.notes || null;
+      let leaveType: string | null = null;
+
+      if (!status && leaveInfo) {
+        status = 'PAID_LEAVE';
+        notes = `${leaveInfo.leaveType} Leave: ${leaveInfo.reason}`;
+        leaveType = leaveInfo.leaveType;
+      }
 
       calendarData.push({
         date: dateStr,
@@ -464,13 +549,89 @@ export class AttendanceService {
         isWeekend,
         isHoliday: !!holiday,
         holidayName: holiday?.name || null,
-        status: attendance?.status || null,
-        notes: attendance?.notes || null,
+        status,
+        notes,
         markedBy: attendance?.markedBy || null,
+        checkInTime: attendance?.checkInTime || null,
+        checkOutTime: attendance?.checkOutTime || null,
+        workingHours: attendance?.workingHours || null,
+        leaveType,
       });
     }
 
     return calendarData;
+  }
+
+  // Scheduled: Auto-mark absent employees at end of each working day (11 PM)
+  @Cron('0 23 * * 1-5') // Mon-Fri at 11 PM
+  async autoMarkAbsentees(): Promise<void> {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const dayOfWeek = today.getDay();
+      // Skip weekends (safety check, cron already limits to Mon-Fri)
+      if (dayOfWeek === 0 || dayOfWeek === 6) return;
+
+      // Check if today is an official holiday
+      const holiday = await this.prisma.officialHoliday.findFirst({
+        where: { date: today },
+      });
+      if (holiday) {
+        console.log(`[AutoAbsent] Skipped - today is a holiday: ${holiday.name}`);
+        return;
+      }
+
+      // Get all active employees
+      const activeEmployees = await this.prisma.employee.findMany({
+        where: { user: { isActive: true } },
+        select: { id: true },
+      });
+
+      // Get employees who already have attendance for today
+      const markedAttendance = await this.prisma.attendance.findMany({
+        where: { date: today },
+        select: { employeeId: true },
+      });
+      const markedSet = new Set(markedAttendance.map((a) => a.employeeId));
+
+      // Get employees on approved leave today
+      const onLeave = await this.prisma.leave.findMany({
+        where: {
+          status: 'APPROVED',
+          startDate: { lte: today },
+          endDate: { gte: today },
+        },
+        select: { employeeId: true },
+      });
+      const leaveSet = new Set(onLeave.map((l) => l.employeeId));
+
+      // Find employees with no attendance record and not on leave
+      const absentees = activeEmployees.filter(
+        (emp) => !markedSet.has(emp.id) && !leaveSet.has(emp.id),
+      );
+
+      if (absentees.length === 0) {
+        console.log('[AutoAbsent] No absentees found for today.');
+        return;
+      }
+
+      // Bulk create ABSENT records
+      await this.prisma.attendance.createMany({
+        data: absentees.map((emp) => ({
+          employeeId: emp.id,
+          date: today,
+          status: AttendanceStatus.ABSENT,
+          markedBy: 'SYSTEM',
+          notes: 'Auto-marked absent (no check-in recorded)',
+        })),
+        skipDuplicates: true,
+      });
+
+      console.log(`[AutoAbsent] Marked ${absentees.length} employee(s) as absent for ${today.toISOString().split('T')[0]}`);
+    } catch (error) {
+      console.error('[AutoAbsent] Failed to auto-mark absentees:', error);
+    }
   }
 
   // Get all employees attendance for a date (for HR)

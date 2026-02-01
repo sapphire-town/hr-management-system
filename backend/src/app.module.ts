@@ -21,6 +21,7 @@ import { DirectorsListModule } from './directors-list/directors-list.module';
 import { SettingsModule } from './settings/settings.module';
 import { TargetModule } from './target/target.module';
 import { DailyReportModule } from './daily-report/daily-report.module';
+import { TicketModule } from './ticket/ticket.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { DailyReportModule } from './daily-report/daily-report.module';
     SettingsModule,
     TargetModule,
     DailyReportModule,
+    TicketModule,
   ],
 })
 export class AppModule {}

@@ -51,6 +51,15 @@ export class AttendanceController {
     return this.attendanceService.markAttendance(user.employeeId, dto);
   }
 
+  @Post('checkout')
+  @ApiOperation({ summary: 'Check out for today' })
+  async checkOut(@CurrentUser() user: JwtPayload) {
+    if (!user.employeeId) {
+      throw new Error('Employee ID not found');
+    }
+    return this.attendanceService.checkOut(user.employeeId);
+  }
+
   @Post('bulk')
   @Roles(UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Mark bulk attendance' })

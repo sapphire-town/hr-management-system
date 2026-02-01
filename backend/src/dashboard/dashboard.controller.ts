@@ -1,8 +1,11 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { DashboardService } from './dashboard.service';
+import { UserRole } from '@prisma/client';
 
 interface JwtPayload {
   sub: string;
@@ -55,5 +58,13 @@ export class DashboardController {
     @Param('type') type: string,
   ) {
     return this.dashboardService.getChartData(type, user.role, user.employeeId);
+  }
+
+  @Get('reports/comprehensive')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Get comprehensive reports for Director and HR Head' })
+  async getComprehensiveReports(@CurrentUser() user: JwtPayload) {
+    return this.dashboardService.getComprehensiveReports();
   }
 }

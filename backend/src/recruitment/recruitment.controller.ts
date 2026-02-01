@@ -177,6 +177,13 @@ export class RecruitmentController {
     );
   }
 
+  @Get('evaluations/:id/history')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER, UserRole.INTERVIEWER)
+  @ApiOperation({ summary: 'Get evaluation edit history for audit trail' })
+  async getEvaluationHistory(@Param('id') evaluationId: string) {
+    return this.recruitmentService.getEvaluationHistory(evaluationId);
+  }
+
   // ==================== STATISTICS ====================
 
   @Get('statistics')

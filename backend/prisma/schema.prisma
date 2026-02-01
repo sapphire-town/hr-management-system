@@ -102,6 +102,29 @@ enum InterviewRoundStatus {
   ON_HOLD
 }
 
+enum NotificationType {
+  INTERVIEWER_ASSIGNED
+  STUDENT_ADDED
+  DRIVE_UPDATE
+  DRIVE_REMINDER
+  LEAVE_STATUS
+  DOCUMENT_RELEASED
+  RESIGNATION_STATUS
+  TICKET_ASSIGNED
+  PASSWORD_RESET
+  WELCOME
+  PROMOTION
+  REWARD
+  BIRTHDAY
+  POLICY_UPDATE
+}
+
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+  BOTH
+}
+
 model User {
   id            String       @id @default(uuid())
   email         String       @unique
@@ -113,6 +136,7 @@ model User {
   updatedAt     DateTime     @updatedAt
 
   employee      Employee?
+  notifications Notification[]
 
   @@map("users")
 }
@@ -197,6 +221,7 @@ model Employee {
   payslips          Payslip[]
   interviewerDrives PlacementDriveInterviewer[]
   roundEvaluations  RoundEvaluation[]
+  evaluationEdits   RoundEvaluationHistory[]
   hiringRequests    HiringRequest[] @relation("HiringRequestRequester")
 
   @@map("employees")
@@ -442,9 +467,28 @@ model RoundEvaluation {
 
   student       Student               @relation(fields: [studentId], references: [id], onDelete: Cascade)
   evaluator     Employee              @relation(fields: [evaluatorId], references: [id])
+  history       RoundEvaluationHistory[]
 
   @@unique([studentId, roundNumber])
   @@map("round_evaluations")
+}
+
+model RoundEvaluationHistory {
+  id                String                @id @default(uuid())
+  evaluationId      String
+  previousStatus    InterviewRoundStatus?
+  newStatus         InterviewRoundStatus
+  previousComments  String?
+  newComments       String?
+  editedBy          String
+  editedAt          DateTime              @default(now())
+  changeReason      String?
+
+  evaluation        RoundEvaluation       @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  editor            Employee              @relation(fields: [editedBy], references: [id])
+
+  @@index([evaluationId])
+  @@map("round_evaluation_history")
 }
 
 model AssetRequest {
@@ -555,16 +599,20 @@ model HiringRequest {
 }
 
 model Notification {
-  id          String   @id @default(uuid())
+  id          String              @id @default(uuid())
   recipientId String
+  recipient   User                @relation(fields: [recipientId], references: [id], onDelete: Cascade)
   subject     String
   message     String
-  type        String   // email, in-app, both
+  type        NotificationType    @default(WELCOME)
+  channel     NotificationChannel @default(BOTH)
+  metadata    Json?               // { driveId, studentId, changes, etc. }
   sentAt      DateTime?
-  isRead      Boolean  @default(false)
+  isRead      Boolean             @default(false)
   readAt      DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime            @default(now())
 
+  @@index([recipientId, isRead])
   @@map("notifications")
 }
 

@@ -7,8 +7,9 @@ import {
 import { PrismaService } from '../common/prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import { HolidayService } from './holiday.service';
+import { AttendanceService } from '../attendance/attendance.service';
 import { ApplyLeaveDto, LeaveActionDto, LeaveFilterDto } from './dto/leave.dto';
-import { UserRole, LeaveStatus, LeaveType } from '@prisma/client';
+import { UserRole, LeaveStatus, LeaveType, AttendanceStatus } from '@prisma/client';
 
 @Injectable()
 export class LeaveService {
@@ -16,6 +17,7 @@ export class LeaveService {
     private prisma: PrismaService,
     private notificationService: NotificationService,
     private holidayService: HolidayService,
+    private attendanceService: AttendanceService,
   ) {}
 
   async apply(employeeId: string, dto: ApplyLeaveDto) {
@@ -312,6 +314,9 @@ export class LeaveService {
         },
       });
 
+      // Create PAID_LEAVE attendance records for each working day of the leave
+      await this.createLeaveAttendanceRecords(leave);
+
       // Send notification to employee
       if (employeeEmail) {
         try {
@@ -330,6 +335,62 @@ export class LeaveService {
     }
 
     throw new ForbiddenException('Not authorized to approve leaves');
+  }
+
+  /**
+   * Create PAID_LEAVE attendance records for each working day of an approved leave.
+   * Skips weekends, holidays, and days that already have attendance records.
+   */
+  private async createLeaveAttendanceRecords(leave: {
+    id: string;
+    employeeId: string;
+    startDate: Date;
+    endDate: Date;
+    leaveType: LeaveType;
+    reason: string;
+  }) {
+    try {
+      const start = new Date(leave.startDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(leave.endDate);
+      end.setHours(0, 0, 0, 0);
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dayOfWeek = d.getDay();
+        // Skip weekends
+        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
+        // Skip holidays
+        const isHoliday = await this.holidayService.isHoliday(new Date(d));
+        if (isHoliday) continue;
+
+        const dateForRecord = new Date(d);
+        dateForRecord.setHours(0, 0, 0, 0);
+
+        // Check if attendance already exists for this date
+        const existing = await this.prisma.attendance.findFirst({
+          where: {
+            employeeId: leave.employeeId,
+            date: dateForRecord,
+          },
+        });
+
+        if (!existing) {
+          await this.prisma.attendance.create({
+            data: {
+              employeeId: leave.employeeId,
+              date: dateForRecord,
+              status: AttendanceStatus.PAID_LEAVE,
+              markedBy: 'SYSTEM',
+              notes: `${leave.leaveType} Leave (Auto-recorded from approved leave request)`,
+            },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error creating leave attendance records:', error);
+      // Don't throw - leave approval should still succeed even if attendance record creation fails
+    }
   }
 
   async reject(
