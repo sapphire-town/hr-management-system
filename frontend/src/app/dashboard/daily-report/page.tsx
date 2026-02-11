@@ -12,6 +12,10 @@ import {
   Trash2,
   Send,
   AlertCircle,
+  Paperclip,
+  Upload,
+  X,
+  Download,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
@@ -25,11 +29,19 @@ interface ReportingParam {
   type: string;
 }
 
+interface Attachment {
+  fileName: string;
+  filePath: string;
+  paramKey?: string;
+}
+
 interface DailyReport {
   id: string;
   employeeId: string;
   reportDate: string;
   reportData: Record<string, number>;
+  generalNotes: string | null;
+  attachments: Attachment[];
   isVerified: boolean;
   verifiedBy: string | null;
   verifiedAt: string | null;
@@ -64,6 +76,10 @@ export default function DailyReportPage() {
   const [reports, setReports] = React.useState<DailyReport[]>([]);
   const [stats, setStats] = React.useState<ReportStats | null>(null);
   const [reportData, setReportData] = React.useState<Record<string, number>>({});
+  const [generalNotes, setGeneralNotes] = React.useState('');
+  const [attachments, setAttachments] = React.useState<Attachment[]>([]);
+  const [uploadingFiles, setUploadingFiles] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [selectedDate, setSelectedDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   const [editingReport, setEditingReport] = React.useState<DailyReport | null>(null);
   const [showHistory, setShowHistory] = React.useState(false);
@@ -90,6 +106,8 @@ export default function DailyReportPage() {
       // If there's a report for today, populate the form
       if (todayRes.data) {
         setReportData(todayRes.data.reportData);
+        setGeneralNotes(todayRes.data.generalNotes || '');
+        setAttachments(todayRes.data.attachments || []);
       }
 
       // Fetch report history for current month
@@ -123,12 +141,14 @@ export default function DailyReportPage() {
     setSubmitting(true);
     try {
       if (editingReport) {
-        await dailyReportAPI.update(editingReport.id, { reportData });
+        await dailyReportAPI.update(editingReport.id, { reportData, generalNotes, attachments });
         setEditingReport(null);
       } else {
         await dailyReportAPI.submit({
           reportDate: selectedDate,
           reportData,
+          generalNotes,
+          attachments,
         });
       }
       await fetchData();
@@ -138,6 +158,8 @@ export default function DailyReportPage() {
         initialData[param.key] = 0;
       });
       setReportData(initialData);
+      setGeneralNotes('');
+      setAttachments([]);
     } catch (error: any) {
       console.error('Error submitting report:', error);
       alert(error.response?.data?.message || 'Failed to submit report');
@@ -149,6 +171,8 @@ export default function DailyReportPage() {
   const handleEdit = (report: DailyReport) => {
     setEditingReport(report);
     setReportData(report.reportData);
+    setGeneralNotes(report.generalNotes || '');
+    setAttachments(report.attachments || []);
     setSelectedDate(format(parseISO(report.reportDate), 'yyyy-MM-dd'));
   };
 
@@ -168,13 +192,54 @@ export default function DailyReportPage() {
     setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
     if (todayReport) {
       setReportData(todayReport.reportData);
+      setGeneralNotes(todayReport.generalNotes || '');
+      setAttachments(todayReport.attachments || []);
     } else {
       const initialData: Record<string, number> = {};
       reportingParams.forEach((param) => {
         initialData[param.key] = 0;
       });
       setReportData(initialData);
+      setGeneralNotes('');
+      setAttachments([]);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingFiles(true);
+    try {
+      const fileArray = Array.from(files);
+      const res = await dailyReportAPI.uploadAttachments(fileArray);
+      const uploaded: Attachment[] = (res.data || []).map((f: any) => ({
+        fileName: f.originalName || f.fileName,
+        filePath: f.filePath || f.filename,
+      }));
+      setAttachments((prev) => [...prev, ...uploaded]);
+    } catch (error: any) {
+      console.error('Error uploading files:', error);
+      alert(error.response?.data?.message || 'Failed to upload files');
+    } finally {
+      setUploadingFiles(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return '🖼️';
+    if (['pdf'].includes(ext || '')) return '📕';
+    if (['doc', 'docx'].includes(ext || '')) return '📄';
+    if (['xls', 'xlsx', 'csv'].includes(ext || '')) return '📊';
+    return '📎';
   };
 
   const cardStyle: React.CSSProperties = {
@@ -436,6 +501,173 @@ export default function DailyReportPage() {
               })}
             </div>
 
+            {/* General Notes */}
+            <div style={{ marginTop: '24px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                General Notes / Summary
+              </label>
+              <textarea
+                value={generalNotes}
+                onChange={(e) => setGeneralNotes(e.target.value)}
+                disabled={todayReport?.isVerified && isTodaySelected && !editingReport}
+                placeholder="Add any notes or summary for today's work..."
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                  fontSize: '14px',
+                  color: '#111827',
+                  backgroundColor: todayReport?.isVerified && isTodaySelected && !editingReport ? '#f3f4f6' : '#ffffff',
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+
+            {/* Document Upload */}
+            <div style={{ marginTop: '24px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Paperclip style={{ width: '16px', height: '16px', color: '#6b7280' }} />
+                  Attachments / Documents
+                </div>
+              </label>
+
+              {/* Upload area */}
+              {!(todayReport?.isVerified && isTodaySelected && !editingReport) && (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: '2px dashed #d1d5db',
+                    borderRadius: '12px',
+                    padding: '24px',
+                    textAlign: 'center',
+                    cursor: uploadingFiles ? 'wait' : 'pointer',
+                    backgroundColor: '#fafafa',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = '#7c3aed';
+                    e.currentTarget.style.backgroundColor = '#f5f3ff';
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.backgroundColor = '#fafafa';
+                  }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.backgroundColor = '#fafafa';
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                      setUploadingFiles(true);
+                      try {
+                        const fileArray = Array.from(files);
+                        const res = await dailyReportAPI.uploadAttachments(fileArray);
+                        const uploaded: Attachment[] = (res.data || []).map((f: any) => ({
+                          fileName: f.originalName || f.fileName,
+                          filePath: f.filePath || f.filename,
+                        }));
+                        setAttachments((prev) => [...prev, ...uploaded]);
+                      } catch (error: any) {
+                        alert(error.response?.data?.message || 'Failed to upload files');
+                      } finally {
+                        setUploadingFiles(false);
+                      }
+                    }
+                  }}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    onChange={handleFileUpload}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.gif,.webp"
+                    style={{ display: 'none' }}
+                  />
+                  {uploadingFiles ? (
+                    <div>
+                      <div style={{ fontSize: '14px', color: '#7c3aed', fontWeight: 500 }}>Uploading...</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <Upload style={{ width: '32px', height: '32px', color: '#9ca3af', margin: '0 auto 8px' }} />
+                      <p style={{ fontSize: '14px', color: '#374151', fontWeight: 500, margin: '0 0 4px 0' }}>
+                        Click to upload or drag & drop
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>
+                        PDF, Word, Excel, Images, CSV (max 10MB each, up to 10 files)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Uploaded files list */}
+              {attachments.length > 0 && (
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {attachments.map((file, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+                        <span style={{ fontSize: '18px' }}>{getFileIcon(file.fileName)}</span>
+                        <span style={{ fontSize: '14px', color: '#111827', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {file.fileName}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        {file.filePath && (
+                          <a
+                            href={dailyReportAPI.getAttachmentUrl(file.filePath)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              padding: '4px',
+                              borderRadius: '4px',
+                              color: '#7c3aed',
+                              textDecoration: 'none',
+                            }}
+                            title="Download"
+                          >
+                            <Download style={{ width: '16px', height: '16px' }} />
+                          </a>
+                        )}
+                        {!(todayReport?.isVerified && isTodaySelected && !editingReport) && (
+                          <button
+                            onClick={() => removeAttachment(idx)}
+                            style={{
+                              padding: '4px',
+                              borderRadius: '4px',
+                              border: 'none',
+                              backgroundColor: 'transparent',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                            }}
+                            title="Remove"
+                          >
+                            <X style={{ width: '16px', height: '16px' }} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Action buttons */}
             <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               {editingReport && (
@@ -513,7 +745,7 @@ export default function DailyReportPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f9fafb' }}>
-                    {['Date', 'Status', ...reportingParams.map((p) => p.label), 'Actions'].map((header) => (
+                    {['Date', 'Status', ...reportingParams.map((p) => p.label), 'Files', 'Actions'].map((header) => (
                       <th
                         key={header}
                         style={{
@@ -585,6 +817,18 @@ export default function DailyReportPage() {
                         );
                       })}
                       <td style={{ padding: '16px' }}>
+                        {(report.attachments || []).length > 0 ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Paperclip style={{ width: '14px', height: '14px', color: '#7c3aed' }} />
+                            <span style={{ fontSize: '13px', fontWeight: 500, color: '#7c3aed' }}>
+                              {(report.attachments || []).length}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: '#d1d5db' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '16px' }}>
                         {!report.isVerified && (
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button
@@ -626,7 +870,7 @@ export default function DailyReportPage() {
                   {reports.length === 0 && (
                     <tr>
                       <td
-                        colSpan={3 + reportingParams.length}
+                        colSpan={4 + reportingParams.length}
                         style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}
                       >
                         No reports submitted this month
