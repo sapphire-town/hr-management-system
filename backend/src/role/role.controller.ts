@@ -60,8 +60,8 @@ export class RoleController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.DIRECTOR)
-  @ApiOperation({ summary: 'Update role (Director only)' })
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Update role (Director/HR Head)' })
   async update(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
     return this.roleService.update(id, dto);
   }

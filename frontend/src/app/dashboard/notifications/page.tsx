@@ -60,7 +60,25 @@ export default function NotificationsPage() {
     // Navigate based on notification type and metadata
     if (notification.metadata?.driveId) {
       router.push(`/dashboard/my-drives?driveId=${notification.metadata.driveId}`);
+    } else if (notification.type === 'DOCUMENT_VERIFICATION_PENDING' || notification.type === 'DOCUMENT_VERIFIED' || notification.type === 'DOCUMENT_RELEASED') {
+      router.push('/dashboard/documents');
+    } else if (notification.type === 'NEW_EMPLOYEE_ONBOARDING' && notification.metadata?.employeeId) {
+      router.push('/dashboard/employees');
+    } else if (notification.type === 'RESIGNATION_SUBMITTED') {
+      router.push('/dashboard/resignation/manage');
+    } else if (notification.type === 'RESIGNATION_STATUS') {
+      router.push('/dashboard/resignation');
     }
+  };
+
+  const isClickable = (notification: Notification) => {
+    return notification.metadata?.driveId ||
+      notification.type === 'DOCUMENT_VERIFICATION_PENDING' ||
+      notification.type === 'DOCUMENT_VERIFIED' ||
+      notification.type === 'DOCUMENT_RELEASED' ||
+      notification.type === 'NEW_EMPLOYEE_ONBOARDING' ||
+      notification.type === 'RESIGNATION_SUBMITTED' ||
+      notification.type === 'RESIGNATION_STATUS';
   };
 
   const filteredNotifications = filter === 'all'
@@ -78,11 +96,21 @@ export default function NotificationsPage() {
         return '🏖️';
       case 'DOCUMENT_RELEASED':
         return '📄';
+      case 'DOCUMENT_VERIFICATION_PENDING':
+        return '📋';
+      case 'DOCUMENT_VERIFIED':
+        return '✅';
       case 'TICKET_ASSIGNED':
         return '🎫';
       case 'PROMOTION':
       case 'REWARD':
         return '🎉';
+      case 'NEW_EMPLOYEE_ONBOARDING':
+        return '👋';
+      case 'RESIGNATION_SUBMITTED':
+        return '📝';
+      case 'RESIGNATION_STATUS':
+        return '📋';
       default:
         return '🔔';
     }
@@ -166,13 +194,13 @@ export default function NotificationsPage() {
                 onClick={() => handleNotificationClick(notification)}
                 style={{
                   padding: '16px',
-                  cursor: notification.metadata?.driveId ? 'pointer' : 'default',
+                  cursor: isClickable(notification) ? 'pointer' : 'default',
                   backgroundColor: notification.isRead ? 'white' : '#faf5ff',
                   borderLeft: notification.isRead ? '3px solid transparent' : '3px solid #7c3aed',
                   transition: 'all 0.2s',
                 }}
                 onMouseEnter={(e) => {
-                  if (notification.metadata?.driveId) {
+                  if (isClickable(notification)) {
                     e.currentTarget.style.transform = 'translateX(4px)';
                     e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
                   }
@@ -224,7 +252,7 @@ export default function NotificationsPage() {
                         >
                           {notification.message}
                         </p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '12px', color: '#9ca3af' }}>
                             {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                           </span>
@@ -233,6 +261,29 @@ export default function NotificationsPage() {
                               <span style={{ color: '#d1d5db' }}>•</span>
                               <span style={{ fontSize: '12px', color: '#7c3aed', fontWeight: 500 }}>
                                 {notification.metadata.collegeName}
+                              </span>
+                            </>
+                          )}
+                          {notification.metadata?.employeeName && (
+                            <>
+                              <span style={{ color: '#d1d5db' }}>•</span>
+                              <span style={{ fontSize: '12px', color: '#7c3aed', fontWeight: 500 }}>
+                                {notification.metadata.employeeName}
+                              </span>
+                            </>
+                          )}
+                          {notification.metadata?.documentType && (
+                            <>
+                              <span style={{ color: '#d1d5db' }}>•</span>
+                              <span style={{
+                                fontSize: '11px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                background: '#f5f3ff',
+                                color: '#7c3aed',
+                                fontWeight: 500,
+                              }}>
+                                {notification.metadata.documentType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                               </span>
                             </>
                           )}

@@ -21,6 +21,18 @@ export class LeaveService {
   ) {}
 
   async apply(employeeId: string, dto: ApplyLeaveDto) {
+    // First check if employee is an intern - interns cannot apply for paid leave
+    const employeeCheck = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { employeeType: true },
+    });
+
+    if (employeeCheck?.employeeType === 'INTERN') {
+      throw new ForbiddenException(
+        'Interns are not eligible for paid leave. Please contact your manager for unpaid leave arrangements.',
+      );
+    }
+
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
 
@@ -445,6 +457,7 @@ export class LeaveService {
           sickLeaveBalance: true,
           casualLeaveBalance: true,
           earnedLeaveBalance: true,
+          employeeType: true,
         },
       }),
       this.prisma.companySettings.findFirst(),
@@ -454,6 +467,9 @@ export class LeaveService {
       throw new NotFoundException('Employee not found');
     }
 
+    // Check if employee is an intern - they don't get paid leave
+    const isIntern = employee.employeeType === 'INTERN';
+
     // Get leave policies from settings or use defaults
     const leavePolicies = (settings?.leavePolicies as Record<string, number>) || {};
     const sickTotal = leavePolicies.sickLeavePerYear ?? 12;
@@ -461,6 +477,7 @@ export class LeaveService {
     const earnedTotal = leavePolicies.earnedLeavePerYear ?? 15;
 
     return {
+      isIntern,
       sick: employee.sickLeaveBalance,
       casual: employee.casualLeaveBalance,
       earned: employee.earnedLeaveBalance,
@@ -468,12 +485,14 @@ export class LeaveService {
         employee.sickLeaveBalance +
         employee.casualLeaveBalance +
         employee.earnedLeaveBalance,
-      allocation: {
-        sick: sickTotal,
-        casual: casualTotal,
-        earned: earnedTotal,
-        total: sickTotal + casualTotal + earnedTotal,
-      },
+      allocation: isIntern
+        ? { sick: 0, casual: 0, earned: 0, total: 0 }
+        : {
+            sick: sickTotal,
+            casual: casualTotal,
+            earned: earnedTotal,
+            total: sickTotal + casualTotal + earnedTotal,
+          },
     };
   }
 

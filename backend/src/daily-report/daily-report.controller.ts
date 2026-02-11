@@ -9,8 +9,12 @@ import {
   Query,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFiles,
+  Res,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -22,6 +26,27 @@ import {
   VerifyDailyReportDto,
   DailyReportFilterDto,
 } from './dto/daily-report.dto';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import { Response } from 'express';
+import * as fs from 'fs';
+
+// Configure multer storage
+const storage = diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = join(process.cwd(), 'uploads', 'daily-reports');
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `${uuidv4()}${extname(file.originalname)}`;
+    cb(null, uniqueSuffix);
+  },
+});
 
 @ApiTags('Daily Reports')
 @ApiBearerAuth()
@@ -44,6 +69,64 @@ export class DailyReportController {
     return this.dailyReportService.create(req.user.employeeId, dto);
   }
 
+  @Post('upload-attachments')
+  @ApiOperation({ summary: 'Upload attachments for daily report' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage,
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+      fileFilter: (req, file, cb) => {
+        // Allow images, PDFs, and common document types
+        const allowedMimes = [
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/plain',
+          'text/csv',
+        ];
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Invalid file type'), false);
+        }
+      },
+    }),
+  )
+  async uploadAttachments(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('paramKey') paramKey?: string,
+  ) {
+    const attachments = files.map((file) => ({
+      fileName: file.originalname,
+      filePath: `/uploads/daily-reports/${file.filename}`,
+      paramKey: paramKey || null,
+    }));
+
+    return { attachments };
+  }
+
+  @Get('attachment/:filename')
+  @ApiOperation({ summary: 'Download an attachment' })
+  async downloadAttachment(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    const filePath = join(process.cwd(), 'uploads', 'daily-reports', filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+
+    return res.sendFile(filePath);
+  }
+
   @Get('my')
   @ApiOperation({ summary: 'Get my daily reports' })
   async getMyReports(@Request() req: any, @Query() filters: DailyReportFilterDto) {
@@ -51,7 +134,7 @@ export class DailyReportController {
   }
 
   @Get('today')
-  @ApiOperation({ summary: 'Get today\'s report' })
+  @ApiOperation({ summary: "Get today's report" })
   async getTodayReport(@Request() req: any) {
     return this.dailyReportService.getTodayReport(req.user.employeeId);
   }

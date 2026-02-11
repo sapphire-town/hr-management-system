@@ -53,12 +53,19 @@ export class EmployeeService {
         },
       });
 
-      // Default leave balances for new employees
-      const defaultLeaveBalances = {
-        sickLeaveBalance: 12,    // 12 sick leave days per year
-        casualLeaveBalance: 12,  // 12 casual leave days per year
-        earnedLeaveBalance: 15,  // 15 earned leave days per year
-      };
+      // Default leave balances - Interns get NO paid leave
+      const isIntern = dto.employeeType === 'INTERN';
+      const defaultLeaveBalances = isIntern
+        ? {
+            sickLeaveBalance: 0,     // Interns don't get paid leave
+            casualLeaveBalance: 0,   // Interns don't get paid leave
+            earnedLeaveBalance: 0,   // Interns don't get paid leave
+          }
+        : {
+            sickLeaveBalance: 12,    // 12 sick leave days per year
+            casualLeaveBalance: 12,  // 12 casual leave days per year
+            earnedLeaveBalance: 15,  // 15 earned leave days per year
+          };
 
       const employee = await tx.employee.create({
         data: {
@@ -72,6 +79,9 @@ export class EmployeeService {
           phone: dto.phone,
           address: dto.address,
           employeeType: dto.employeeType,
+          internType: dto.internType,
+          contractEndDate: dto.contractEndDate ? new Date(dto.contractEndDate) : undefined,
+          internshipDuration: dto.internshipDuration,
           managerId: dto.managerId,
           joinDate: dto.joinDate ? new Date(dto.joinDate) : new Date(),
           // Initialize leave balances for new employee
@@ -103,6 +113,21 @@ export class EmployeeService {
     } catch (error) {
       console.error('Failed to send welcome email:', error);
       // Don't fail the employee creation if email fails
+    }
+
+    // Notify HR to release onboarding documents (offer letter, contract, etc.)
+    try {
+      await this.notificationService.notifyHRNewEmployeeOnboarding({
+        id: result.employee.id,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        roleName: result.employee.role?.name || 'Unknown',
+        joinDate: result.employee.joinDate,
+      });
+    } catch (error) {
+      console.error('Failed to notify HR about new employee:', error);
+      // Don't fail the employee creation if notification fails
     }
 
     return result;
@@ -212,6 +237,173 @@ export class EmployeeService {
     }
 
     return employee;
+  }
+
+  /**
+   * Get comprehensive employee details including attendance, reports, documents, etc.
+   * For Director and HR Head only
+   */
+  async findOneComprehensive(id: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, email: true, role: true, isActive: true, lastLogin: true, createdAt: true } },
+        role: true,
+        manager: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            user: { select: { email: true } },
+          },
+        },
+        subordinates: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            role: { select: { name: true } },
+            user: { select: { isActive: true } },
+          },
+        },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    // Get attendance for last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const attendance = await this.prisma.attendance.findMany({
+      where: {
+        employeeId: id,
+        date: { gte: thirtyDaysAgo },
+      },
+      orderBy: { date: 'desc' },
+      take: 30,
+    });
+
+    // Get daily reports for last 30 days
+    const dailyReports = await this.prisma.dailyReport.findMany({
+      where: {
+        employeeId: id,
+        reportDate: { gte: thirtyDaysAgo },
+      },
+      orderBy: { reportDate: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        reportDate: true,
+        reportData: true,
+        isVerified: true,
+        verifiedAt: true,
+        managerComment: true,
+        createdAt: true,
+      },
+    });
+
+    // Get documents
+    const documents = await this.prisma.document.findMany({
+      where: { employeeId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Get document verifications
+    const documentVerifications = await this.prisma.documentVerification.findMany({
+      where: { employeeId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Get rewards
+    const rewards = await this.prisma.reward.findMany({
+      where: { employeeId: id },
+      orderBy: { awardDate: 'desc' },
+      take: 10,
+    });
+
+    // Get leaves for current year
+    const currentYear = new Date().getFullYear();
+    const leaves = await this.prisma.leave.findMany({
+      where: {
+        employeeId: id,
+        startDate: {
+          gte: new Date(`${currentYear}-01-01`),
+        },
+      },
+      orderBy: { startDate: 'desc' },
+    });
+
+    // Get director's list entries
+    const directorsListEntries = await this.prisma.directorList.findMany({
+      where: { employeeId: id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        nominator: {
+          select: { firstName: true, lastName: true },
+        },
+      },
+    });
+
+    // Calculate attendance summary
+    const attendanceSummary = {
+      present: attendance.filter(a => a.status === 'PRESENT').length,
+      absent: attendance.filter(a => a.status === 'ABSENT' || a.status === 'ABSENT_DOUBLE_DEDUCTION').length,
+      halfDay: attendance.filter(a => a.status === 'HALF_DAY').length,
+      paidLeave: attendance.filter(a => a.status === 'PAID_LEAVE').length,
+      total: attendance.length,
+    };
+
+    // Calculate leave summary
+    const leaveSummary = {
+      approved: leaves.filter(l => l.status === 'APPROVED').length,
+      pending: leaves.filter(l => l.status === 'PENDING_MANAGER' || l.status === 'PENDING_HR').length,
+      rejected: leaves.filter(l => l.status === 'REJECTED').length,
+      totalDays: leaves.filter(l => l.status === 'APPROVED').reduce((sum, l) => sum + l.numberOfDays, 0),
+    };
+
+    return {
+      ...employee,
+      // Leave balances are already in employee model
+      leaveBalances: {
+        sick: employee.sickLeaveBalance,
+        casual: employee.casualLeaveBalance,
+        earned: employee.earnedLeaveBalance,
+      },
+      // Bank details
+      bankDetails: {
+        accountHolder: employee.bankAccountHolder,
+        accountNumber: employee.bankAccountNumber,
+        ifsc: employee.bankIfsc,
+        bankName: employee.bankName,
+        branch: employee.bankBranch,
+      },
+      // Emergency contact
+      emergencyContact: {
+        name: employee.emergencyContactName,
+        relation: employee.emergencyContactRelation,
+        phone: employee.emergencyContactPhone,
+        email: employee.emergencyContactEmail,
+      },
+      // Recent data
+      recentAttendance: attendance,
+      attendanceSummary,
+      recentDailyReports: dailyReports,
+      documents,
+      documentVerifications,
+      rewards,
+      leaves,
+      leaveSummary,
+      directorsListEntries,
+      // Recognition stats
+      recognitionStats: {
+        directorsListCount: employee.directorsListCount,
+        totalRewardsAmount: employee.totalRewardsAmount,
+        rewardsCount: rewards.length,
+      },
+    };
   }
 
   async findByUserId(userId: string) {
@@ -859,6 +1051,20 @@ export class EmployeeService {
           );
         } catch (error) {
           console.error(`Failed to send welcome email to ${record.email}:`, error);
+        }
+
+        // Notify HR about new employee for onboarding documents
+        try {
+          await this.notificationService.notifyHRNewEmployeeOnboarding({
+            id: record.email, // Using email as temp ID since we don't have employee ID from bulk transaction
+            firstName: record.firstName,
+            lastName: record.lastName,
+            email: record.email,
+            roleName: record.roleName,
+            joinDate: record.joinDate ? new Date(record.joinDate) : new Date(),
+          });
+        } catch (error) {
+          console.error(`Failed to notify HR about new employee ${record.email}:`, error);
         }
 
         results.push({

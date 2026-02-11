@@ -134,7 +134,13 @@ export class DocumentService {
       );
     }
 
-    return this.prisma.documentVerification.create({
+    // Get employee details for notification
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: true },
+    });
+
+    const document = await this.prisma.documentVerification.create({
       data: {
         employeeId,
         documentType: dto.documentType,
@@ -143,6 +149,22 @@ export class DocumentService {
         status: 'UPLOADED',
       },
     });
+
+    // Notify HR about the document upload for verification
+    if (employee) {
+      await this.notificationService.notifyHRDocumentUploadedForVerification(
+        {
+          id: employee.id,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          email: employee.user.email,
+        },
+        dto.documentType,
+        fileName,
+      );
+    }
+
+    return document;
   }
 
   async getMyVerificationDocuments(employeeId: string) {
@@ -209,16 +231,17 @@ export class DocumentService {
       },
     });
 
-    // Send notification to employee
-    const statusText = dto.status === 'VERIFIED' ? 'verified' : 'rejected';
-    await this.notificationService.sendNotification({
-      recipientId: document.employee.userId,
-      subject: `Document ${statusText}`,
-      message: `Your ${document.documentType.replace('_', ' ')} has been ${statusText}.${
-        dto.rejectionReason ? ` Reason: ${dto.rejectionReason}` : ''
-      }`,
-      type: 'both',
-    });
+    // Send notification to employee about verification result
+    await this.notificationService.notifyEmployeeDocumentVerified(
+      {
+        userId: document.employee.userId,
+        email: document.employee.user.email,
+        firstName: document.employee.firstName,
+      },
+      document.documentType,
+      dto.status as 'VERIFIED' | 'REJECTED',
+      dto.rejectionReason,
+    );
 
     return updated;
   }

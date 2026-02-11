@@ -9,7 +9,7 @@ import {
   IsUUID,
   MinLength,
 } from 'class-validator';
-import { EmployeeType, UserRole } from '@prisma/client';
+import { EmployeeType, UserRole, InternType } from '@prisma/client';
 
 export class CreateEmployeeDto {
   @ApiProperty()
@@ -60,6 +60,21 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsEnum(EmployeeType)
   employeeType?: EmployeeType;
+
+  @ApiPropertyOptional({ enum: InternType, description: 'Type of internship (only for interns)' })
+  @IsOptional()
+  @IsEnum(InternType)
+  internType?: InternType;
+
+  @ApiPropertyOptional({ description: 'Contract/internship end date' })
+  @IsOptional()
+  @IsDateString()
+  contractEndDate?: string;
+
+  @ApiPropertyOptional({ description: 'Duration of internship (e.g., "3 months")' })
+  @IsOptional()
+  @IsString()
+  internshipDuration?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

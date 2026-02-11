@@ -27,6 +27,7 @@ interface Leave {
 }
 
 interface LeaveBalance {
+  isIntern?: boolean;
   sick: number;
   casual: number;
   earned: number;
@@ -198,52 +199,84 @@ export default function LeavesPage() {
       title="Leave Management"
       description="View and manage leave requests"
       actions={
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={() => {}}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: '1px solid #e5e7eb',
-              backgroundColor: '#ffffff',
-              color: '#374151',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
-          <button
-            onClick={() => router.push('/dashboard/leaves/apply')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: 'none',
-              background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.25)',
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            Apply Leave
-          </button>
-        </div>
+        balance?.isIntern ? null : (
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {}}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1px solid #e5e7eb',
+                backgroundColor: '#ffffff',
+                color: '#374151',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+            <button
+              onClick={() => router.push('/dashboard/leaves/apply')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                color: '#ffffff',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.25)',
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              Apply Leave
+            </button>
+          </div>
+        )
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        {/* Leave Balance Cards */}
-        {balance && (
+        {/* Intern Notice */}
+        {balance?.isIntern && (
+          <div style={{
+            ...cardStyle,
+            padding: '32px',
+            textAlign: 'center',
+            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            border: '1px solid #fbbf24',
+          }}>
+            <div style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: '#fbbf24',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}>
+              <Calendar className="w-8 h-8" style={{ color: '#92400e' }} />
+            </div>
+            <h3 style={{ fontSize: 20, fontWeight: 600, color: '#92400e', margin: '0 0 8px 0' }}>
+              Paid Leave Not Available for Interns
+            </h3>
+            <p style={{ fontSize: 14, color: '#a16207', margin: 0, maxWidth: 500, marginLeft: 'auto', marginRight: 'auto' }}>
+              As an intern, you are not eligible for paid leave benefits. If you need time off, please speak directly with your manager to arrange unpaid leave.
+            </p>
+          </div>
+        )}
+
+        {/* Leave Balance Cards - Only for non-interns */}
+        {balance && !balance.isIntern && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             {[
               { label: 'Sick Leave', value: balance.sick, color: '#ef4444', bg: '#fef2f2', total: balance.allocation?.sick ?? 12 },

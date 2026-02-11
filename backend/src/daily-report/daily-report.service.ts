@@ -27,6 +27,10 @@ export class DailyReportService {
       include: { role: true },
     });
 
+    console.log('[DailyReport] getMyReportingParams - employeeId:', employeeId);
+    console.log('[DailyReport] getMyReportingParams - role name:', employee?.role?.name);
+    console.log('[DailyReport] getMyReportingParams - dailyReportingParams:', JSON.stringify(employee?.role?.dailyReportingParams));
+
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
@@ -78,6 +82,8 @@ export class DailyReportService {
         employeeId,
         reportDate,
         reportData: dto.reportData as unknown as Prisma.InputJsonValue,
+        generalNotes: dto.generalNotes,
+        attachments: (dto.attachments || []) as unknown as Prisma.InputJsonValue,
       },
       include: {
         employee: {
@@ -111,10 +117,28 @@ export class DailyReportService {
       throw new BadRequestException('Cannot update a verified report');
     }
 
+    const updateData: any = {};
+    if (dto.reportData !== undefined) {
+      updateData.reportData = dto.reportData as unknown as Prisma.InputJsonValue;
+    }
+    if (dto.generalNotes !== undefined) {
+      updateData.generalNotes = dto.generalNotes;
+    }
+    if (dto.attachments !== undefined) {
+      updateData.attachments = dto.attachments as unknown as Prisma.InputJsonValue;
+    }
+
     return this.prisma.dailyReport.update({
       where: { id },
-      data: {
-        reportData: dto.reportData as unknown as Prisma.InputJsonValue,
+      data: updateData,
+      include: {
+        employee: {
+          select: {
+            firstName: true,
+            lastName: true,
+            role: { select: { name: true, dailyReportingParams: true } },
+          },
+        },
       },
     });
   }

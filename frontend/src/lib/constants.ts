@@ -22,6 +22,7 @@ import {
   Briefcase,
   Ticket,
   BarChart3,
+  UserCheck,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -51,6 +52,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       title: 'Management',
       items: [
         { label: "Director's List", href: '/dashboard/directors-list', icon: Award },
+        { label: 'Daily Reporting Config', href: '/dashboard/daily-reporting/config', icon: ClipboardList },
         { label: 'Reports', href: '/dashboard/reports', icon: FileText },
         { label: 'Hiring Requests', href: '/dashboard/hiring', icon: UserPlus },
         { label: 'Resignations', href: '/dashboard/resignation/manage', icon: UserMinus },
@@ -80,10 +82,12 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
     {
       title: 'HR Operations',
       items: [
+        { label: 'Onboarding', href: '/dashboard/onboarding', icon: UserCheck },
         { label: 'Leave Management', href: '/dashboard/leaves', icon: Calendar },
         { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
         { label: 'Documents', href: '/dashboard/documents', icon: FileText },
         { label: 'Payroll', href: '/dashboard/payroll', icon: DollarSign },
+        { label: 'Daily Reporting Config', href: '/dashboard/daily-reporting/config', icon: ClipboardList },
         { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
       ],
     },

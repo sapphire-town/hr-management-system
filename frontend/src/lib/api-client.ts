@@ -52,11 +52,15 @@ export const authAPI = {
 export const employeeAPI = {
   getAll: (params?: any) => apiClient.get('/employees', { params }),
   getById: (id: string) => apiClient.get(`/employees/${id}`),
+  getComprehensive: (id: string) => apiClient.get(`/employees/${id}/comprehensive`),
   getMe: () => apiClient.get('/employees/me'),
   updateMe: (data: any) => apiClient.patch('/employees/me', data),
   changePassword: (currentPassword: string, newPassword: string) =>
     apiClient.post('/employees/me/change-password', { currentPassword, newPassword }),
   getManagers: () => apiClient.get('/employees/list/managers'),
+  // Manager team endpoints
+  getMyTeam: () => apiClient.get('/employees/team'),
+  getMyTeamAttendance: () => apiClient.get('/employees/team/attendance'),
   create: (data: any) => apiClient.post('/employees', data),
   update: (id: string, data: any) => apiClient.patch(`/employees/${id}`, data),
   promote: (id: string, data: { newUserRole: string; newRoleId: string; newSalary?: number }) =>
@@ -431,20 +435,52 @@ export const targetAPI = {
   permanentDelete: (id: string) => apiClient.delete(`/targets/${id}/permanent`),
 };
 
+// Types for enhanced daily reports
+interface ParamData {
+  value: number;
+  notes?: string;
+  links?: string[];
+}
+
+interface Attachment {
+  fileName: string;
+  filePath: string;
+  paramKey?: string;
+}
+
 export const dailyReportAPI = {
   // Employee endpoints
   getMyParams: () => apiClient.get('/daily-reports/my-params'),
-  submit: (data: { reportDate: string; reportData: Record<string, number> }) =>
-    apiClient.post('/daily-reports', data),
+  submit: (data: {
+    reportDate: string;
+    reportData: Record<string, ParamData>;
+    generalNotes?: string;
+    attachments?: Attachment[];
+  }) => apiClient.post('/daily-reports', data),
   getMyReports: (params?: { startDate?: string; endDate?: string; isVerified?: boolean }) =>
     apiClient.get('/daily-reports/my', { params }),
   getToday: () => apiClient.get('/daily-reports/today'),
   getMyStats: (month?: string) =>
     apiClient.get('/daily-reports/my-stats', { params: month ? { month } : {} }),
-  update: (id: string, data: { reportData: Record<string, number> }) =>
-    apiClient.patch(`/daily-reports/${id}`, data),
+  update: (id: string, data: {
+    reportData?: Record<string, ParamData>;
+    generalNotes?: string;
+    attachments?: Attachment[];
+  }) => apiClient.patch(`/daily-reports/${id}`, data),
   delete: (id: string) => apiClient.delete(`/daily-reports/${id}`),
   getById: (id: string) => apiClient.get(`/daily-reports/${id}`),
+
+  // File upload
+  uploadAttachments: (files: File[], paramKey?: string) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    if (paramKey) formData.append('paramKey', paramKey);
+    return apiClient.post('/daily-reports/upload-attachments', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  getAttachmentUrl: (filename: string) =>
+    `${apiClient.defaults.baseURL}/daily-reports/attachment/${filename}`,
 
   // Manager endpoints
   getTeamReports: (params?: { employeeId?: string; startDate?: string; endDate?: string; isVerified?: boolean }) =>

@@ -23,6 +23,12 @@ enum EmployeeType {
   FULL_TIME
 }
 
+enum InternType {
+  SUMMER
+  WINTER
+  CUSTOM
+}
+
 enum LeaveType {
   SICK
   CASUAL
@@ -109,6 +115,9 @@ enum NotificationType {
   DRIVE_REMINDER
   LEAVE_STATUS
   DOCUMENT_RELEASED
+  DOCUMENT_VERIFICATION_PENDING
+  DOCUMENT_VERIFIED
+  RESIGNATION_SUBMITTED
   RESIGNATION_STATUS
   TICKET_ASSIGNED
   PASSWORD_RESET
@@ -117,6 +126,7 @@ enum NotificationType {
   REWARD
   BIRTHDAY
   POLICY_UPDATE
+  NEW_EMPLOYEE_ONBOARDING
 }
 
 enum NotificationChannel {
@@ -168,6 +178,9 @@ model Employee {
   phone             String?
   address           String?
   employeeType      EmployeeType  @default(FULL_TIME)
+  internType        InternType?   // Only for interns: SUMMER, WINTER, CUSTOM
+  contractEndDate   DateTime?     // End date for interns/contract employees
+  internshipDuration String?      // e.g., "3 months", "6 months"
   salary            Float
   roleId            String
   managerId         String?
@@ -244,7 +257,9 @@ model DailyReport {
   id            String   @id @default(uuid())
   employeeId    String
   reportDate    DateTime
-  reportData    Json     // Contains parameter values based on role
+  reportData    Json     // Contains parameter values with notes and links: { key: { value, notes, links } }
+  generalNotes  String?  // Overall notes/summary for the day
+  attachments   Json     @default("[]") // Array of attachment objects: [{ fileName, filePath, paramKey? }]
   isVerified    Boolean  @default(false)
   verifiedBy    String?
   verifiedAt    DateTime?

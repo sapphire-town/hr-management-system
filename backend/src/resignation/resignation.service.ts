@@ -40,7 +40,7 @@ export class ResignationService {
 
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
-      include: { manager: { include: { user: true } }, user: true },
+      include: { manager: { include: { user: true } }, user: true, role: true },
     });
 
     if (!employee) {
@@ -65,29 +65,22 @@ export class ResignationService {
       },
     });
 
-    // Notify manager
-    if (employee.manager) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.manager.userId,
-        subject: 'Resignation Submitted',
-        message: `${employee.firstName} ${employee.lastName} has submitted their resignation with last working day as ${lastWorkingDay.toLocaleDateString()}.`,
-        type: 'both',
-      });
-    }
-
-    // Notify HR
-    const hrUsers = await this.prisma.user.findMany({
-      where: { role: { in: ['HR_HEAD', 'DIRECTOR'] } },
-    });
-
-    for (const hr of hrUsers) {
-      await this.notificationService.sendNotification({
-        recipientId: hr.id,
-        subject: 'New Resignation Submitted',
-        message: `${employee.firstName} ${employee.lastName} has submitted their resignation.`,
-        type: 'both',
-      });
-    }
+    // Notify manager and HR with enhanced notification
+    await this.notificationService.notifyResignationSubmitted(
+      {
+        id: employee.id,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
+        email: employee.user.email,
+        roleName: employee.role?.name || 'Employee',
+        managerId: employee.managerId || undefined,
+      },
+      {
+        reason: dto.reason,
+        lastWorkingDay,
+        noticePeriodDays: dto.noticePeriodDays,
+      },
+    );
 
     return resignation;
   }
@@ -218,28 +211,19 @@ export class ResignationService {
       data: updateData,
     });
 
-    // Notify HR
-    const hrUsers = await this.prisma.user.findMany({
-      where: { role: { in: ['HR_HEAD', 'DIRECTOR'] } },
-    });
-
-    for (const hr of hrUsers) {
-      await this.notificationService.sendNotification({
-        recipientId: hr.id,
-        subject: 'Resignation Pending HR Approval',
-        message: `Resignation of ${resignation.employee.firstName} ${resignation.employee.lastName} is pending HR approval.`,
-        type: 'both',
-      });
-    }
-
-    // Notify employee
+    // Notify employee with enhanced notification
     if (employee) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.userId,
-        subject: 'Resignation Update',
-        message: 'Your resignation has been approved by your manager and is now pending HR approval.',
-        type: 'both',
-      });
+      await this.notificationService.notifyResignationStatusChange(
+        {
+          userId: employee.userId,
+          email: employee.user.email,
+          firstName: employee.firstName,
+        },
+        'PENDING_HR',
+        {
+          lastWorkingDay: updated.lastWorkingDay,
+        },
+      );
     }
 
     return updated;
@@ -269,14 +253,19 @@ export class ResignationService {
       },
     });
 
-    // Notify employee
+    // Notify employee with enhanced notification
     if (employee) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.userId,
-        subject: 'Resignation Rejected',
-        message: `Your resignation has been rejected. Reason: ${dto.rejectionReason}`,
-        type: 'both',
-      });
+      await this.notificationService.notifyResignationStatusChange(
+        {
+          userId: employee.userId,
+          email: employee.user.email,
+          firstName: employee.firstName,
+        },
+        'REJECTED',
+        {
+          rejectionReason: dto.rejectionReason,
+        },
+      );
     }
 
     return updated;
@@ -308,14 +297,19 @@ export class ResignationService {
       include: { user: true },
     });
 
-    // Notify employee
+    // Notify employee with enhanced notification
     if (employee) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.userId,
-        subject: 'Resignation Approved',
-        message: `Your resignation has been approved. Your last working day is ${updated.lastWorkingDay.toLocaleDateString()}.`,
-        type: 'both',
-      });
+      await this.notificationService.notifyResignationStatusChange(
+        {
+          userId: employee.userId,
+          email: employee.user.email,
+          firstName: employee.firstName,
+        },
+        'APPROVED',
+        {
+          lastWorkingDay: updated.lastWorkingDay,
+        },
+      );
     }
 
     return updated;
@@ -341,14 +335,19 @@ export class ResignationService {
       include: { user: true },
     });
 
-    // Notify employee
+    // Notify employee with enhanced notification
     if (employee) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.userId,
-        subject: 'Resignation Rejected',
-        message: `Your resignation has been rejected by HR. Reason: ${dto.rejectionReason}`,
-        type: 'both',
-      });
+      await this.notificationService.notifyResignationStatusChange(
+        {
+          userId: employee.userId,
+          email: employee.user.email,
+          firstName: employee.firstName,
+        },
+        'REJECTED',
+        {
+          rejectionReason: dto.rejectionReason,
+        },
+      );
     }
 
     return updated;

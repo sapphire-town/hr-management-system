@@ -89,6 +89,9 @@ export class RoleService {
   }
 
   async update(id: string, dto: UpdateRoleDto) {
+    console.log('[Role] update - id:', id);
+    console.log('[Role] update - dto:', JSON.stringify(dto));
+
     const role = await this.prisma.role.findUnique({ where: { id } });
 
     if (!role) {
@@ -114,10 +117,15 @@ export class RoleService {
       updateData.performanceChartConfig = JSON.parse(JSON.stringify(dto.performanceChartConfig));
     }
 
-    return this.prisma.role.update({
+    console.log('[Role] update - updateData:', JSON.stringify(updateData));
+
+    const updated = await this.prisma.role.update({
       where: { id },
       data: updateData,
     });
+
+    console.log('[Role] update - saved successfully:', updated.name);
+    return updated;
   }
 
   async delete(id: string) {

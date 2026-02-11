@@ -164,6 +164,13 @@ export class EmployeeController {
     return this.employeeService.findOne(id);
   }
 
+  @Get(':id/comprehensive')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Get comprehensive employee details including attendance, reports, documents (Director/HR only)' })
+  async findOneComprehensive(@Param('id') id: string) {
+    return this.employeeService.findOneComprehensive(id);
+  }
+
   @Patch(':id')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Update employee' })

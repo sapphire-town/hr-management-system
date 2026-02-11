@@ -43,6 +43,7 @@ export default function PayslipsPage() {
   const { user } = useAuthStore();
   const [payslips, setPayslips] = React.useState<Payslip[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [isIntern, setIsIntern] = React.useState(false);
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear().toString());
   const [selectedPayslip, setSelectedPayslip] = React.useState<Payslip | null>(null);
   const [detailModalOpen, setDetailModalOpen] = React.useState(false);
@@ -54,7 +55,14 @@ export default function PayslipsPage() {
     try {
       setLoading(true);
       const response = await payrollAPI.getMyPayslips(selectedYear);
-      setPayslips(response.data || []);
+      // Handle new response format with isIntern flag
+      if (response.data?.isIntern !== undefined) {
+        setIsIntern(response.data.isIntern);
+        setPayslips(response.data.payslips || []);
+      } else {
+        // Fallback for old format
+        setPayslips(response.data || []);
+      }
     } catch (error) {
       console.error('Error fetching payslips:', error);
       setPayslips([]);
@@ -96,16 +104,48 @@ export default function PayslipsPage() {
       description="View your salary and payment history"
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        {/* Year Filter */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 20px',
-          background: 'white',
-          borderRadius: '12px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
+        {/* Intern Notice */}
+        {isIntern && !loading && (
+          <div style={{
+            padding: '32px',
+            textAlign: 'center',
+            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            border: '1px solid #fbbf24',
+            borderRadius: '16px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+          }}>
+            <div style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: '#fbbf24',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}>
+              <DollarSign style={{ width: 32, height: 32, color: '#92400e' }} />
+            </div>
+            <h3 style={{ fontSize: 20, fontWeight: 600, color: '#92400e', margin: '0 0 8px 0' }}>
+              Salary Slips Not Available for Interns
+            </h3>
+            <p style={{ fontSize: 14, color: '#a16207', margin: 0, maxWidth: 500, marginLeft: 'auto', marginRight: 'auto' }}>
+              As an intern, you receive a stipend which is processed differently from regular salary. Please contact HR for any queries regarding your stipend payments.
+            </p>
+          </div>
+        )}
+
+        {/* Year Filter - Only show for non-interns */}
+        {!isIntern && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            background: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+          }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Calendar style={{ height: '20px', width: '20px', color: '#6b7280' }} />
             <span style={{ fontWeight: '500', color: '#374151' }}>Filter by Year</span>
@@ -142,9 +182,10 @@ export default function PayslipsPage() {
             }} />
           </div>
         </div>
+        )}
 
-        {/* Year Summary */}
-        {payslips.length > 0 && (
+        {/* Year Summary - Only for non-interns */}
+        {!isIntern && payslips.length > 0 && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -197,7 +238,8 @@ export default function PayslipsPage() {
           </div>
         )}
 
-        {/* Payslips List */}
+        {/* Payslips List - Only for non-interns */}
+        {!isIntern && (
         <div style={{
           background: 'white',
           borderRadius: '16px',
@@ -285,6 +327,7 @@ export default function PayslipsPage() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Payslip Detail Modal */}

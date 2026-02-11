@@ -18,10 +18,11 @@ export class PayrollService {
     const { month } = dto;
     const [year, monthNum] = month.split('-').map(Number);
 
-    // Get all active employees
+    // Get all active FULL-TIME employees (exclude interns - they don't get payslips)
     const employees = await this.prisma.employee.findMany({
       where: {
         user: { isActive: true },
+        employeeType: 'FULL_TIME', // Interns are excluded from payroll
       },
       include: {
         user: { select: { email: true } },
@@ -30,7 +31,7 @@ export class PayrollService {
     });
 
     if (employees.length === 0) {
-      throw new BadRequestException('No active employees found');
+      throw new BadRequestException('No active full-time employees found for payroll');
     }
 
     // Calculate working days for the month
@@ -286,8 +287,24 @@ export class PayrollService {
 
   /**
    * Get employee's own payslips
+   * Interns don't have payslips - returns empty array with a flag
    */
   async getMyPayslips(employeeId: string, filters?: PayslipFilterDto) {
+    // Check if employee is an intern
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { employeeType: true },
+    });
+
+    // Interns don't get payslips
+    if (employee?.employeeType === 'INTERN') {
+      return {
+        isIntern: true,
+        message: 'Interns are not eligible for salary slips',
+        payslips: [],
+      };
+    }
+
     const where: any = { employeeId };
 
     if (filters?.year) {
@@ -308,7 +325,7 @@ export class PayrollService {
       },
     });
 
-    return payslips;
+    return { isIntern: false, payslips };
   }
 
   /**

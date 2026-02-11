@@ -227,6 +227,77 @@ export default function DailyReportPage() {
       description={`Submit your daily work report${roleName ? ` - ${roleName}` : ''}`}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {/* Expected Results Banner */}
+        <div
+          style={{
+            ...cardStyle,
+            background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
+            border: '1px solid #ddd6fe',
+          }}
+        >
+          <div style={{ padding: '20px', borderBottom: '1px solid #ddd6fe' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  backgroundColor: '#7c3aed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Target style={{ height: '20px', width: '20px', color: '#ffffff' }} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827', margin: 0 }}>
+                  Today's Expected Results - {roleName}
+                </h3>
+                <p style={{ fontSize: '13px', color: '#6b7280', margin: '2px 0 0 0' }}>
+                  Keep these targets in mind while submitting your daily report
+                </p>
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+              {reportingParams.map((param) => (
+                <div
+                  key={param.key}
+                  style={{
+                    padding: '16px',
+                    backgroundColor: '#ffffff',
+                    borderRadius: '12px',
+                    border: '1px solid #e5e7eb',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                  }}
+                >
+                  <span style={{ fontSize: '28px', fontWeight: 700, color: '#7c3aed' }}>
+                    {param.target}
+                  </span>
+                  <span style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
+                    {param.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      color: '#9ca3af',
+                      marginTop: '2px',
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {param.type}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Stats Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           {[

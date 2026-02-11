@@ -24,11 +24,19 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Calendar,
+  FileText,
+  ClipboardList,
+  CreditCard,
+  Phone,
+  Building2,
+  Star,
+  TrendingUp,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
-import { employeeAPI, roleAPI, settingsAPI } from '@/lib/api-client';
+import { employeeAPI, roleAPI, settingsAPI, performanceAPI, documentAPI } from '@/lib/api-client';
 import {
   Dialog,
   DialogContent,
@@ -111,8 +119,11 @@ export default function EmployeesPage() {
   const [showCredentialsModal, setShowCredentialsModal] = React.useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [showDetailsModal, setShowDetailsModal] = React.useState(false);
+  const [detailsTab, setDetailsTab] = React.useState<'overview' | 'attendance' | 'reports' | 'documents' | 'leave' | 'bank' | 'performance'>('overview');
   const [selectedEmployee, setSelectedEmployee] = React.useState<Employee | null>(null);
   const [detailedEmployee, setDetailedEmployee] = React.useState<any>(null);
+  const [employeePerformance, setEmployeePerformance] = React.useState<any>(null);
+  const [loadingPerformance, setLoadingPerformance] = React.useState(false);
   const [credentials, setCredentials] = React.useState<{ email: string; password: string } | null>(null);
   const [copiedField, setCopiedField] = React.useState<string | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = React.useState<string | null>(null);
@@ -132,6 +143,12 @@ export default function EmployeesPage() {
     results: Array<{ email: string; status: 'success' | 'failed'; message?: string; temporaryPassword?: string }>;
   } | null>(null);
 
+  // Document verification states
+  const [showVerifyDocModal, setShowVerifyDocModal] = React.useState(false);
+  const [selectedVerifyDoc, setSelectedVerifyDoc] = React.useState<any>(null);
+  const [verifyDocData, setVerifyDocData] = React.useState({ status: 'VERIFIED' as 'VERIFIED' | 'REJECTED', rejectionReason: '' });
+  const [verifyingDoc, setVerifyingDoc] = React.useState(false);
+
   // Form states
  const [formData, setFormData] = React.useState({
   email: '',
@@ -145,7 +162,10 @@ export default function EmployeesPage() {
   phone: '',
   address: '',
   managerId: '',
-  employeeType: 'FULL_TIME', // ✅ ADDED
+  employeeType: 'FULL_TIME',
+  internType: '',
+  contractEndDate: '',
+  internshipDuration: '',
   joinDate: new Date().toISOString().split('T')[0],
 });
 
@@ -185,6 +205,31 @@ export default function EmployeesPage() {
     fetchData();
   }, [fetchData]);
 
+  // Fetch performance data when performance tab is selected
+  React.useEffect(() => {
+    const fetchPerformance = async () => {
+      if (detailsTab === 'performance' && detailedEmployee && canManageEmployees) {
+        try {
+          setLoadingPerformance(true);
+          const [perfRes, historyRes] = await Promise.all([
+            performanceAPI.getEmployeePerformance(detailedEmployee.id),
+            performanceAPI.getEmployeeHistory(detailedEmployee.id, 6),
+          ]);
+          setEmployeePerformance({
+            ...perfRes.data,
+            history: historyRes.data,
+          });
+        } catch (error) {
+          console.error('Error fetching performance:', error);
+          setEmployeePerformance(null);
+        } finally {
+          setLoadingPerformance(false);
+        }
+      }
+    };
+    fetchPerformance();
+  }, [detailsTab, detailedEmployee, canManageEmployees]);
+
   const filteredEmployees = React.useMemo(() => {
     return employees.filter((emp) => {
       const matchesSearch =
@@ -217,7 +262,10 @@ const resetFormData = React.useCallback(() => {
     phone: '',
     address: '',
     managerId: '',
-    employeeType: 'FULL_TIME', // ✅ ADDED
+    employeeType: 'FULL_TIME',
+    internType: '',
+    contractEndDate: '',
+    internshipDuration: '',
     joinDate: new Date().toISOString().split('T')[0],
   });
 }, [roles]);
@@ -243,14 +291,14 @@ const resetFormData = React.useCallback(() => {
 
     try {
       setSubmitting(true);
-      const payload = {
+      const payload: any = {
       email: formData.email,
       firstName: formData.firstName,
       lastName: formData.lastName,
       role: formData.role,
       roleId: formData.roleId,
       salary: parseFloat(formData.salary),
-      employeeType: formData.employeeType, // ✅ ADDED
+      employeeType: formData.employeeType,
       joinDate: formData.joinDate || undefined,
       dateOfBirth: formData.dateOfBirth || undefined,
       gender: formData.gender || undefined,
@@ -258,6 +306,13 @@ const resetFormData = React.useCallback(() => {
       address: formData.address || undefined,
       managerId: formData.managerId || undefined,
     };
+
+    // Add intern-specific fields if employee type is INTERN
+    if (formData.employeeType === 'INTERN') {
+      payload.internType = formData.internType || undefined;
+      payload.contractEndDate = formData.contractEndDate || undefined;
+      payload.internshipDuration = formData.internshipDuration || undefined;
+    }
 
       const response = await employeeAPI.create(payload);
       setCredentials({
@@ -385,6 +440,48 @@ const resetFormData = React.useCallback(() => {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  // Document verification handlers
+  const handleViewVerificationDoc = async (docId: string) => {
+    try {
+      const response = await documentAPI.viewVerificationDocument(docId);
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      alert('Failed to view document');
+    }
+  };
+
+  const openVerifyDocModal = (doc: any) => {
+    setSelectedVerifyDoc(doc);
+    setVerifyDocData({ status: 'VERIFIED', rejectionReason: '' });
+    setShowVerifyDocModal(true);
+  };
+
+  const handleVerifyDocument = async () => {
+    if (!selectedVerifyDoc) return;
+    try {
+      setVerifyingDoc(true);
+      if (verifyDocData.status === 'VERIFIED') {
+        await documentAPI.verify(selectedVerifyDoc.id);
+      } else {
+        await documentAPI.reject(selectedVerifyDoc.id, verifyDocData.rejectionReason);
+      }
+      // Refresh employee details to get updated verification status
+      if (detailedEmployee) {
+        const response = await employeeAPI.getComprehensive(detailedEmployee.id);
+        setDetailedEmployee(response.data);
+      }
+      setShowVerifyDocModal(false);
+      setSelectedVerifyDoc(null);
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to verify document');
+    } finally {
+      setVerifyingDoc(false);
+    }
+  };
+
   // Search employee by ID
   const handleSearchById = async () => {
     if (!searchById.trim()) {
@@ -393,8 +490,12 @@ const resetFormData = React.useCallback(() => {
     }
     try {
       setSearchingById(true);
-      const response = await employeeAPI.getById(searchById.trim());
+      // Use comprehensive endpoint for Director/HR to get full details
+      const response = canManageEmployees
+        ? await employeeAPI.getComprehensive(searchById.trim())
+        : await employeeAPI.getById(searchById.trim());
       setDetailedEmployee(response.data);
+      setDetailsTab('overview');
       setShowDetailsModal(true);
       setSearchById('');
     } catch (error: any) {
@@ -407,8 +508,12 @@ const resetFormData = React.useCallback(() => {
   // View employee details
   const handleViewDetails = async (emp: Employee) => {
     try {
-      const response = await employeeAPI.getById(emp.id);
+      // Use comprehensive endpoint for Director/HR to get full details
+      const response = canManageEmployees
+        ? await employeeAPI.getComprehensive(emp.id)
+        : await employeeAPI.getById(emp.id);
       setDetailedEmployee(response.data);
+      setDetailsTab('overview');
       setShowDetailsModal(true);
       setActionMenuOpen(null);
     } catch (error: any) {
@@ -416,7 +521,7 @@ const resetFormData = React.useCallback(() => {
     }
   };
 
-  const openEditModal = (emp: Employee) => {
+  const openEditModal = (emp: Employee & { employeeType?: string; internType?: string; contractEndDate?: string; internshipDuration?: string }) => {
     setSelectedEmployee(emp);
     setFormData({
       email: emp.user.email,
@@ -430,6 +535,10 @@ const resetFormData = React.useCallback(() => {
       phone: emp.phone || '',
       address: emp.address || '',
       managerId: emp.manager?.id || '',
+      employeeType: emp.employeeType || 'FULL_TIME',
+      internType: emp.internType || '',
+      contractEndDate: emp.contractEndDate?.split('T')[0] || '',
+      internshipDuration: emp.internshipDuration || '',
       joinDate: emp.joinDate?.split('T')[0] || '',
     });
     setShowEditModal(true);
@@ -1124,6 +1233,56 @@ const resetFormData = React.useCallback(() => {
               />
             </div>
             <div>
+              <Label>Employee Type *</Label>
+              <Select value={formData.employeeType} onValueChange={(v) => setFormData({ ...formData, employeeType: v, internType: '', contractEndDate: '', internshipDuration: '' })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FULL_TIME">Full Time</SelectItem>
+                  <SelectItem value="INTERN">Intern</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {formData.employeeType === 'INTERN' && (
+              <>
+                <div>
+                  <Label>Intern Type</Label>
+                  <Select value={formData.internType || 'none'} onValueChange={(v) => setFormData({ ...formData, internType: v === 'none' ? '' : v })}>
+                    <SelectTrigger><SelectValue placeholder="Select intern type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not specified</SelectItem>
+                      <SelectItem value="SUMMER">Summer Intern</SelectItem>
+                      <SelectItem value="WINTER">Winter Intern</SelectItem>
+                      <SelectItem value="CUSTOM">Custom Duration</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Contract End Date</Label>
+                  <Input
+                    type="date"
+                    value={formData.contractEndDate}
+                    onChange={(e) => setFormData({ ...formData, contractEndDate: e.target.value })}
+                    min={formData.joinDate || new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <Label>Internship Duration</Label>
+                  <Select value={formData.internshipDuration || 'none'} onValueChange={(v) => setFormData({ ...formData, internshipDuration: v === 'none' ? '' : v })}>
+                    <SelectTrigger><SelectValue placeholder="Select duration" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not specified</SelectItem>
+                      <SelectItem value="1 month">1 Month</SelectItem>
+                      <SelectItem value="2 months">2 Months</SelectItem>
+                      <SelectItem value="3 months">3 Months</SelectItem>
+                      <SelectItem value="4 months">4 Months</SelectItem>
+                      <SelectItem value="6 months">6 Months</SelectItem>
+                      <SelectItem value="12 months">12 Months</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+            <div>
               <Label>Join Date</Label>
               <Input
                 type="date"
@@ -1456,12 +1615,12 @@ const resetFormData = React.useCallback(() => {
 
       {/* View Employee Details Modal */}
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent style={{ maxWidth: 700 }}>
+        <DialogContent style={{ maxWidth: 900, maxHeight: '90vh' }}>
           <DialogHeader>
             <DialogTitle>Employee Details</DialogTitle>
           </DialogHeader>
           {detailedEmployee && (
-            <div style={{ padding: '16px 0', maxHeight: '70vh', overflowY: 'auto' }}>
+            <div style={{ padding: '16px 0' }}>
               {/* Header with Avatar */}
               <div style={{
                 display: 'flex',
@@ -1486,140 +1645,772 @@ const resetFormData = React.useCallback(() => {
                 }}>
                   {detailedEmployee.firstName?.[0]}{detailedEmployee.lastName?.[0]}
                 </div>
-                <div style={{ color: '#fff' }}>
+                <div style={{ color: '#fff', flex: 1 }}>
                   <div style={{ fontSize: 20, fontWeight: 600 }}>
                     {detailedEmployee.firstName} {detailedEmployee.lastName}
                   </div>
                   <div style={{ opacity: 0.9 }}>{detailedEmployee.user?.email}</div>
-                  <div style={{
-                    display: 'inline-block',
-                    marginTop: 8,
-                    padding: '4px 12px',
-                    background: 'rgba(255,255,255,0.2)',
-                    borderRadius: 20,
-                    fontSize: 12,
-                    fontWeight: 500,
-                  }}>
-                    {detailedEmployee.user?.role?.replace('_', ' ')}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <span style={{
+                      padding: '4px 12px',
+                      background: 'rgba(255,255,255,0.2)',
+                      borderRadius: 20,
+                      fontSize: 12,
+                      fontWeight: 500,
+                    }}>
+                      {detailedEmployee.user?.role?.replace('_', ' ')}
+                    </span>
+                    <span style={{
+                      padding: '4px 12px',
+                      background: detailedEmployee.user?.isActive ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)',
+                      borderRadius: 20,
+                      fontSize: 12,
+                      fontWeight: 500,
+                    }}>
+                      {detailedEmployee.user?.isActive ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
                 </div>
+                {/* Recognition Stats for Director/HR */}
+                {canManageEmployees && detailedEmployee.recognitionStats && (
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 24, fontWeight: 700 }}>{detailedEmployee.recognitionStats.directorsListCount}</div>
+                      <div style={{ fontSize: 11, opacity: 0.8 }}>Director's List</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 24, fontWeight: 700 }}>{detailedEmployee.recognitionStats.rewardsCount}</div>
+                      <div style={{ fontSize: 11, opacity: 0.8 }}>Rewards</div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Employee ID */}
-              <div style={{
-                padding: 12,
-                background: '#f8fafc',
-                borderRadius: 8,
-                marginBottom: 16,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Employee ID</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>{detailedEmployee.id}</div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyToClipboard(detailedEmployee.id, 'empId')}
-                >
-                  {copiedField === 'empId' ? <Check style={{ width: 14, height: 14 }} /> : <Copy style={{ width: 14, height: 14 }} />}
-                </Button>
-              </div>
-
-              {/* Details Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Department</div>
-                  <div style={{ fontWeight: 500 }}>{detailedEmployee.role?.name || '-'}</div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Status</div>
-                  <div style={{
-                    display: 'inline-block',
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    fontSize: 12,
-                    fontWeight: 500,
-                    background: detailedEmployee.user?.isActive ? '#dcfce7' : '#fee2e2',
-                    color: detailedEmployee.user?.isActive ? '#166534' : '#991b1b',
-                  }}>
-                    {detailedEmployee.user?.isActive ? 'Active' : 'Inactive'}
-                  </div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Salary</div>
-                  <div style={{ fontWeight: 500 }}>
-                    {detailedEmployee.salary ? `₹${detailedEmployee.salary.toLocaleString()}` : '-'}
-                  </div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Join Date</div>
-                  <div style={{ fontWeight: 500 }}>
-                    {detailedEmployee.joinDate ? new Date(detailedEmployee.joinDate).toLocaleDateString() : '-'}
-                  </div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Phone</div>
-                  <div style={{ fontWeight: 500 }}>{detailedEmployee.phone || '-'}</div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Gender</div>
-                  <div style={{ fontWeight: 500 }}>{detailedEmployee.gender || '-'}</div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Date of Birth</div>
-                  <div style={{ fontWeight: 500 }}>
-                    {detailedEmployee.dateOfBirth ? new Date(detailedEmployee.dateOfBirth).toLocaleDateString() : '-'}
-                  </div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Reports To</div>
-                  <div style={{ fontWeight: 500 }}>
-                    {detailedEmployee.manager ? `${detailedEmployee.manager.firstName} ${detailedEmployee.manager.lastName}` : '-'}
-                  </div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, gridColumn: 'span 2' }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Address</div>
-                  <div style={{ fontWeight: 500 }}>{detailedEmployee.address || '-'}</div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Last Login</div>
-                  <div style={{ fontWeight: 500 }}>
-                    {detailedEmployee.user?.lastLogin ? new Date(detailedEmployee.user.lastLogin).toLocaleString() : 'Never'}
-                  </div>
-                </div>
-                <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Employee Type</div>
-                  <div style={{ fontWeight: 500 }}>{detailedEmployee.employeeType?.replace('_', ' ') || 'Full Time'}</div>
-                </div>
-              </div>
-
-              {/* Team Members (if manager) */}
-              {detailedEmployee.subordinates && detailedEmployee.subordinates.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>
-                    Team Members ({detailedEmployee.subordinates.length})
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {detailedEmployee.subordinates.map((sub: any) => (
-                      <div
-                        key={sub.id}
-                        style={{
-                          padding: '8px 12px',
-                          background: '#e0e7ff',
-                          borderRadius: 8,
-                          fontSize: 13,
-                          color: '#4338ca',
-                        }}
-                      >
-                        {sub.firstName} {sub.lastName} - {sub.role?.name}
-                      </div>
-                    ))}
-                  </div>
+              {/* Tabs for Director/HR */}
+              {canManageEmployees && (
+                <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e5e7eb', paddingBottom: 8 }}>
+                  {[
+                    { id: 'overview', label: 'Overview', icon: Eye },
+                    { id: 'performance', label: 'Performance', icon: TrendingUp },
+                    { id: 'attendance', label: 'Attendance', icon: Calendar },
+                    { id: 'reports', label: 'Reports', icon: ClipboardList },
+                    { id: 'leave', label: 'Leave', icon: Calendar },
+                    { id: 'documents', label: 'Documents', icon: FileText },
+                    { id: 'bank', label: 'Bank & Emergency', icon: CreditCard },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setDetailsTab(tab.id as any)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '8px 12px',
+                        background: detailsTab === tab.id ? '#7c3aed' : 'transparent',
+                        color: detailsTab === tab.id ? '#fff' : '#64748b',
+                        border: 'none',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        fontWeight: 500,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <tab.icon style={{ width: 14, height: 14 }} />
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
               )}
+
+              <div style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+                {/* Overview Tab */}
+                {detailsTab === 'overview' && (
+                  <>
+                    {/* Employee ID */}
+                    <div style={{
+                      padding: 12,
+                      background: '#f8fafc',
+                      borderRadius: 8,
+                      marginBottom: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Employee ID</div>
+                        <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>{detailedEmployee.id}</div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copyToClipboard(detailedEmployee.id, 'empId')}
+                      >
+                        {copiedField === 'empId' ? <Check style={{ width: 14, height: 14 }} /> : <Copy style={{ width: 14, height: 14 }} />}
+                      </Button>
+                    </div>
+
+                    {/* Details Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Department</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.role?.name || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Salary</div>
+                        <div style={{ fontWeight: 500 }}>
+                          {detailedEmployee.salary ? `₹${detailedEmployee.salary.toLocaleString()}` : '-'}
+                        </div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Join Date</div>
+                        <div style={{ fontWeight: 500 }}>
+                          {detailedEmployee.joinDate ? new Date(detailedEmployee.joinDate).toLocaleDateString() : '-'}
+                        </div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Employee Type</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.employeeType?.replace('_', ' ') || 'Full Time'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Phone</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.phone || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Gender</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.gender || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Date of Birth</div>
+                        <div style={{ fontWeight: 500 }}>
+                          {detailedEmployee.dateOfBirth ? new Date(detailedEmployee.dateOfBirth).toLocaleDateString() : '-'}
+                        </div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Reports To</div>
+                        <div style={{ fontWeight: 500 }}>
+                          {detailedEmployee.manager ? `${detailedEmployee.manager.firstName} ${detailedEmployee.manager.lastName}` : '-'}
+                        </div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, gridColumn: 'span 2' }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Address</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.address || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Last Login</div>
+                        <div style={{ fontWeight: 500 }}>
+                          {detailedEmployee.user?.lastLogin ? new Date(detailedEmployee.user.lastLogin).toLocaleString() : 'Never'}
+                        </div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Account Created</div>
+                        <div style={{ fontWeight: 500 }}>
+                          {detailedEmployee.user?.createdAt ? new Date(detailedEmployee.user.createdAt).toLocaleDateString() : '-'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Leave Balances for Director/HR */}
+                    {canManageEmployees && detailedEmployee.leaveBalances && (
+                      <div style={{ marginTop: 20 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>Leave Balances</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                          <div style={{ padding: 12, background: '#dcfce7', borderRadius: 8, textAlign: 'center' }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#166534' }}>{detailedEmployee.leaveBalances.sick}</div>
+                            <div style={{ fontSize: 12, color: '#166534' }}>Sick Leave</div>
+                          </div>
+                          <div style={{ padding: 12, background: '#dbeafe', borderRadius: 8, textAlign: 'center' }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>{detailedEmployee.leaveBalances.casual}</div>
+                            <div style={{ fontSize: 12, color: '#1e40af' }}>Casual Leave</div>
+                          </div>
+                          <div style={{ padding: 12, background: '#fef3c7', borderRadius: 8, textAlign: 'center' }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#92400e' }}>{detailedEmployee.leaveBalances.earned}</div>
+                            <div style={{ fontSize: 12, color: '#92400e' }}>Earned Leave</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Team Members (if manager) */}
+                    {detailedEmployee.subordinates && detailedEmployee.subordinates.length > 0 && (
+                      <div style={{ marginTop: 20 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>
+                          Team Members ({detailedEmployee.subordinates.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {detailedEmployee.subordinates.map((sub: any) => (
+                            <div
+                              key={sub.id}
+                              style={{
+                                padding: '8px 12px',
+                                background: sub.user?.isActive ? '#e0e7ff' : '#fee2e2',
+                                borderRadius: 8,
+                                fontSize: 13,
+                                color: sub.user?.isActive ? '#4338ca' : '#991b1b',
+                              }}
+                            >
+                              {sub.firstName} {sub.lastName} - {sub.role?.name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Attendance Tab */}
+                {detailsTab === 'attendance' && canManageEmployees && (
+                  <>
+                    {/* Attendance Summary */}
+                    {detailedEmployee.attendanceSummary && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+                        <div style={{ padding: 16, background: '#dcfce7', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#166534' }}>{detailedEmployee.attendanceSummary.present}</div>
+                          <div style={{ fontSize: 12, color: '#166534' }}>Present</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#fee2e2', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#991b1b' }}>{detailedEmployee.attendanceSummary.absent}</div>
+                          <div style={{ fontSize: 12, color: '#991b1b' }}>Absent</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#fef3c7', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#92400e' }}>{detailedEmployee.attendanceSummary.halfDay}</div>
+                          <div style={{ fontSize: 12, color: '#92400e' }}>Half Day</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#dbeafe', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#1e40af' }}>{detailedEmployee.attendanceSummary.paidLeave}</div>
+                          <div style={{ fontSize: 12, color: '#1e40af' }}>Paid Leave</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Attendance List */}
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>Recent Attendance (Last 30 Days)</div>
+                    {detailedEmployee.recentAttendance?.length > 0 ? (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc' }}>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Date</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Status</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Check In</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Check Out</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Hours</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailedEmployee.recentAttendance.map((att: any) => (
+                            <tr key={att.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: 10 }}>{new Date(att.date).toLocaleDateString()}</td>
+                              <td style={{ padding: 10 }}>
+                                <span style={{
+                                  padding: '2px 8px',
+                                  borderRadius: 4,
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  background: att.status === 'PRESENT' ? '#dcfce7' : att.status === 'ABSENT' ? '#fee2e2' : '#fef3c7',
+                                  color: att.status === 'PRESENT' ? '#166534' : att.status === 'ABSENT' ? '#991b1b' : '#92400e',
+                                }}>
+                                  {att.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td style={{ padding: 10 }}>{att.checkInTime ? new Date(att.checkInTime).toLocaleTimeString() : '-'}</td>
+                              <td style={{ padding: 10 }}>{att.checkOutTime ? new Date(att.checkOutTime).toLocaleTimeString() : '-'}</td>
+                              <td style={{ padding: 10 }}>{att.workingHours ? `${att.workingHours.toFixed(1)}h` : '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>No attendance records found</div>
+                    )}
+                  </>
+                )}
+
+                {/* Reports Tab */}
+                {detailsTab === 'reports' && canManageEmployees && (
+                  <>
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>Recent Daily Reports (Last 30 Days)</div>
+                    {detailedEmployee.recentDailyReports?.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {detailedEmployee.recentDailyReports.map((report: any) => (
+                          <div key={report.id} style={{ padding: 16, background: '#f8fafc', borderRadius: 12, border: '1px solid #e5e7eb' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                              <div style={{ fontWeight: 600 }}>{new Date(report.reportDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                              <span style={{
+                                padding: '4px 10px',
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 500,
+                                background: report.isVerified ? '#dcfce7' : '#fef3c7',
+                                color: report.isVerified ? '#166534' : '#92400e',
+                              }}>
+                                {report.isVerified ? 'Verified' : 'Pending'}
+                              </span>
+                            </div>
+                            {report.reportData && typeof report.reportData === 'object' && (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                                {Object.entries(report.reportData).slice(0, 6).map(([key, val]: [string, any]) => (
+                                  <div key={key} style={{ padding: 8, background: '#fff', borderRadius: 6 }}>
+                                    <div style={{ fontSize: 11, color: '#64748b', textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</div>
+                                    <div style={{ fontWeight: 600 }}>{typeof val === 'object' ? val?.value || '-' : val}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {report.managerComment && (
+                              <div style={{ marginTop: 12, padding: 10, background: '#e0e7ff', borderRadius: 6 }}>
+                                <div style={{ fontSize: 11, color: '#4338ca', marginBottom: 4 }}>Manager Comment</div>
+                                <div style={{ fontSize: 13 }}>{report.managerComment}</div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>No daily reports found</div>
+                    )}
+                  </>
+                )}
+
+                {/* Leave Tab */}
+                {detailsTab === 'leave' && canManageEmployees && (
+                  <>
+                    {/* Leave Summary */}
+                    {detailedEmployee.leaveSummary && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+                        <div style={{ padding: 16, background: '#dcfce7', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#166534' }}>{detailedEmployee.leaveSummary.approved}</div>
+                          <div style={{ fontSize: 12, color: '#166534' }}>Approved</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#fef3c7', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#92400e' }}>{detailedEmployee.leaveSummary.pending}</div>
+                          <div style={{ fontSize: 12, color: '#92400e' }}>Pending</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#fee2e2', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#991b1b' }}>{detailedEmployee.leaveSummary.rejected}</div>
+                          <div style={{ fontSize: 12, color: '#991b1b' }}>Rejected</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#dbeafe', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 28, fontWeight: 700, color: '#1e40af' }}>{detailedEmployee.leaveSummary.totalDays}</div>
+                          <div style={{ fontSize: 12, color: '#1e40af' }}>Days Taken</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Leave List */}
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>Leave Requests (This Year)</div>
+                    {detailedEmployee.leaves?.length > 0 ? (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc' }}>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Type</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>From</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>To</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Days</th>
+                            <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailedEmployee.leaves.map((leave: any) => (
+                            <tr key={leave.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: 10 }}>{leave.leaveType}</td>
+                              <td style={{ padding: 10 }}>{new Date(leave.startDate).toLocaleDateString()}</td>
+                              <td style={{ padding: 10 }}>{new Date(leave.endDate).toLocaleDateString()}</td>
+                              <td style={{ padding: 10 }}>{leave.numberOfDays}</td>
+                              <td style={{ padding: 10 }}>
+                                <span style={{
+                                  padding: '2px 8px',
+                                  borderRadius: 4,
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  background: leave.status === 'APPROVED' ? '#dcfce7' : leave.status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                                  color: leave.status === 'APPROVED' ? '#166534' : leave.status === 'REJECTED' ? '#991b1b' : '#92400e',
+                                }}>
+                                  {leave.status.replace('_', ' ')}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>No leave requests found</div>
+                    )}
+                  </>
+                )}
+
+                {/* Documents Tab */}
+                {detailsTab === 'documents' && canManageEmployees && (
+                  <>
+                    {/* Verification Status Summary */}
+                    {detailedEmployee.documentVerifications?.length > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+                        <div style={{ padding: 16, background: '#f0fdf4', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#166534' }}>
+                            {detailedEmployee.documentVerifications.filter((d: any) => d.status === 'VERIFIED').length}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#166534' }}>Verified</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#fef3c7', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#92400e' }}>
+                            {detailedEmployee.documentVerifications.filter((d: any) => d.status === 'UPLOADED' || d.status === 'UNDER_REVIEW').length}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#92400e' }}>Pending</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#fee2e2', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#991b1b' }}>
+                            {detailedEmployee.documentVerifications.filter((d: any) => d.status === 'REJECTED').length}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#991b1b' }}>Rejected</div>
+                        </div>
+                        <div style={{ padding: 16, background: '#dbeafe', borderRadius: 12, textAlign: 'center' }}>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>
+                            {detailedEmployee.documentVerifications.length}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#1e40af' }}>Total</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Background Verification Documents */}
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <CheckCircle style={{ width: 16, height: 16 }} /> Background Verification Documents
+                    </div>
+                    {detailedEmployee.documentVerifications?.length > 0 ? (
+                      <div style={{ display: 'grid', gap: 8, marginBottom: 24 }}>
+                        {detailedEmployee.documentVerifications.map((doc: any) => (
+                          <div key={doc.id} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: 14,
+                            background: doc.status === 'VERIFIED' ? '#f0fdf4' : doc.status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
+                            borderRadius: 10,
+                            border: `1px solid ${doc.status === 'VERIFIED' ? '#bbf7d0' : doc.status === 'REJECTED' ? '#fecaca' : '#fde68a'}`,
+                          }}>
+                            <div style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 8,
+                              background: doc.status === 'VERIFIED' ? '#dcfce7' : doc.status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}>
+                              {doc.status === 'VERIFIED' ? (
+                                <CheckCircle style={{ width: 20, height: 20, color: '#16a34a' }} />
+                              ) : doc.status === 'REJECTED' ? (
+                                <XCircle style={{ width: 20, height: 20, color: '#dc2626' }} />
+                              ) : (
+                                <AlertCircle style={{ width: 20, height: 20, color: '#d97706' }} />
+                              )}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>
+                                {doc.documentType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{doc.fileName}</div>
+                              {doc.status === 'REJECTED' && doc.rejectionReason && (
+                                <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>
+                                  Reason: {doc.rejectionReason}
+                                </div>
+                              )}
+                              {doc.verifiedAt && (
+                                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                                  {doc.status === 'VERIFIED' ? 'Verified' : 'Reviewed'} on {new Date(doc.verifiedAt).toLocaleDateString()}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <button
+                                onClick={() => handleViewVerificationDoc(doc.id)}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: 6,
+                                  border: '1px solid #e5e7eb',
+                                  background: '#fff',
+                                  color: '#374151',
+                                  fontSize: 12,
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                }}
+                              >
+                                <Eye style={{ width: 14, height: 14 }} /> View
+                              </button>
+                              {(doc.status === 'UPLOADED' || doc.status === 'UNDER_REVIEW') && (
+                                <button
+                                  onClick={() => openVerifyDocModal(doc)}
+                                  style={{
+                                    padding: '6px 12px',
+                                    borderRadius: 6,
+                                    border: 'none',
+                                    background: '#7c3aed',
+                                    color: '#fff',
+                                    fontSize: 12,
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                  }}
+                                >
+                                  <Check style={{ width: 14, height: 14 }} /> Review
+                                </button>
+                              )}
+                              <span style={{
+                                padding: '4px 10px',
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                background: doc.status === 'VERIFIED' ? '#dcfce7' : doc.status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
+                                color: doc.status === 'VERIFIED' ? '#166534' : doc.status === 'REJECTED' ? '#991b1b' : '#92400e',
+                              }}>
+                                {doc.status.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af', background: '#f8fafc', borderRadius: 10, marginBottom: 24 }}>
+                        <AlertCircle style={{ width: 32, height: 32, margin: '0 auto 8px', opacity: 0.5 }} />
+                        <p style={{ margin: 0 }}>No documents uploaded for verification</p>
+                      </div>
+                    )}
+
+                    {/* Released Documents */}
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FileText style={{ width: 16, height: 16 }} /> Released Documents
+                    </div>
+                    {detailedEmployee.documents?.length > 0 ? (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {detailedEmployee.documents.map((doc: any) => (
+                          <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                            <FileText style={{ width: 20, height: 20, color: '#7c3aed' }} />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 500 }}>{doc.documentType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{doc.fileName}</div>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>
+                              {doc.releasedAt ? new Date(doc.releasedAt).toLocaleDateString() : 'Not released'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>No documents released</div>
+                    )}
+                  </>
+                )}
+
+                {/* Bank & Emergency Tab */}
+                {detailsTab === 'bank' && canManageEmployees && (
+                  <>
+                    {/* Bank Details */}
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <CreditCard style={{ width: 16, height: 16 }} /> Bank Details
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Account Holder</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.bankDetails?.accountHolder || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Account Number</div>
+                        <div style={{ fontWeight: 500, fontFamily: 'monospace' }}>{detailedEmployee.bankDetails?.accountNumber || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>IFSC Code</div>
+                        <div style={{ fontWeight: 500, fontFamily: 'monospace' }}>{detailedEmployee.bankDetails?.ifsc || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Bank Name</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.bankDetails?.bankName || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, gridColumn: 'span 2' }}>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Branch</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.bankDetails?.branch || '-'}</div>
+                      </div>
+                    </div>
+
+                    {/* Emergency Contact */}
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Phone style={{ width: 16, height: 16 }} /> Emergency Contact
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div style={{ padding: 12, background: '#fef3c7', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#92400e', marginBottom: 4 }}>Contact Name</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.emergencyContact?.name || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#fef3c7', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#92400e', marginBottom: 4 }}>Relationship</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.emergencyContact?.relation || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#fef3c7', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#92400e', marginBottom: 4 }}>Phone</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.emergencyContact?.phone || '-'}</div>
+                      </div>
+                      <div style={{ padding: 12, background: '#fef3c7', borderRadius: 8 }}>
+                        <div style={{ fontSize: 12, color: '#92400e', marginBottom: 4 }}>Email</div>
+                        <div style={{ fontWeight: 500 }}>{detailedEmployee.emergencyContact?.email || '-'}</div>
+                      </div>
+                    </div>
+
+                    {/* Rewards & Recognition */}
+                    {detailedEmployee.rewards?.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 14, fontWeight: 600, marginTop: 24, marginBottom: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Star style={{ width: 16, height: 16 }} /> Rewards & Recognition
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {detailedEmployee.rewards.map((reward: any) => (
+                            <div key={reward.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: '#faf5ff', borderRadius: 8, border: '1px solid #e9d5ff' }}>
+                              <Award style={{ width: 20, height: 20, color: '#7c3aed' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 500 }}>{reward.badgeName || reward.reason}</div>
+                                <div style={{ fontSize: 12, color: '#64748b' }}>{new Date(reward.awardDate).toLocaleDateString()}</div>
+                              </div>
+                              {reward.amount && (
+                                <div style={{ fontWeight: 600, color: '#059669' }}>₹{reward.amount.toLocaleString()}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* Performance Tab */}
+                {detailsTab === 'performance' && canManageEmployees && (
+                  <>
+                    {loadingPerformance ? (
+                      <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading performance data...</div>
+                    ) : employeePerformance ? (
+                      <>
+                        {/* Performance Score Overview */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+                          <div style={{
+                            padding: 20,
+                            background: 'linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)',
+                            borderRadius: 16,
+                            color: '#fff',
+                            textAlign: 'center',
+                          }}>
+                            <div style={{ fontSize: 32, fontWeight: 700 }}>{employeePerformance.overallScore || 0}%</div>
+                            <div style={{ fontSize: 12, opacity: 0.9 }}>Overall Score</div>
+                          </div>
+                          <div style={{ padding: 16, background: '#dcfce7', borderRadius: 12, textAlign: 'center' }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#166534' }}>{employeePerformance.attendanceScore || 0}%</div>
+                            <div style={{ fontSize: 11, color: '#166534' }}>Attendance</div>
+                          </div>
+                          <div style={{ padding: 16, background: '#dbeafe', borderRadius: 12, textAlign: 'center' }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>{employeePerformance.leaveScore || 0}%</div>
+                            <div style={{ fontSize: 11, color: '#1e40af' }}>Leave Score</div>
+                          </div>
+                          <div style={{ padding: 16, background: '#fef3c7', borderRadius: 12, textAlign: 'center' }}>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#92400e' }}>{employeePerformance.taskCompletionScore || 0}%</div>
+                            <div style={{ fontSize: 11, color: '#92400e' }}>Task Completion</div>
+                          </div>
+                        </div>
+
+                        {/* Attendance Stats */}
+                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151' }}>Attendance Breakdown</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+                          <div style={{ padding: 12, background: '#f0fdf4', borderRadius: 8, textAlign: 'center' }}>
+                            <div style={{ fontSize: 20, fontWeight: 600, color: '#166534' }}>{employeePerformance.daysPresent || 0}</div>
+                            <div style={{ fontSize: 11, color: '#166534' }}>Days Present</div>
+                          </div>
+                          <div style={{ padding: 12, background: '#fef2f2', borderRadius: 8, textAlign: 'center' }}>
+                            <div style={{ fontSize: 20, fontWeight: 600, color: '#991b1b' }}>{employeePerformance.daysAbsent || 0}</div>
+                            <div style={{ fontSize: 11, color: '#991b1b' }}>Days Absent</div>
+                          </div>
+                          <div style={{ padding: 12, background: '#fef3c7', borderRadius: 8, textAlign: 'center' }}>
+                            <div style={{ fontSize: 20, fontWeight: 600, color: '#92400e' }}>{employeePerformance.halfDays || 0}</div>
+                            <div style={{ fontSize: 11, color: '#92400e' }}>Half Days</div>
+                          </div>
+                          <div style={{ padding: 12, background: '#ede9fe', borderRadius: 8, textAlign: 'center' }}>
+                            <div style={{ fontSize: 20, fontWeight: 600, color: '#7c3aed' }}>{employeePerformance.leaveDays || 0}</div>
+                            <div style={{ fontSize: 11, color: '#7c3aed' }}>Leave Days</div>
+                          </div>
+                        </div>
+
+                        {/* Performance Trend */}
+                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#374151', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <TrendingUp style={{ width: 16, height: 16 }} /> Performance Trend
+                          {employeePerformance.trend && (
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              fontWeight: 500,
+                              background: employeePerformance.trend === 'up' ? '#dcfce7' : employeePerformance.trend === 'down' ? '#fee2e2' : '#f3f4f6',
+                              color: employeePerformance.trend === 'up' ? '#166534' : employeePerformance.trend === 'down' ? '#991b1b' : '#6b7280',
+                            }}>
+                              {employeePerformance.trend === 'up' ? '↑ Improving' : employeePerformance.trend === 'down' ? '↓ Declining' : '→ Stable'}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Performance History */}
+                        {employeePerformance.history && employeePerformance.history.length > 0 && (
+                          <div style={{ marginBottom: 20 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                              <thead>
+                                <tr style={{ background: '#f8fafc' }}>
+                                  <th style={{ padding: 10, textAlign: 'left', fontWeight: 600 }}>Month</th>
+                                  <th style={{ padding: 10, textAlign: 'center', fontWeight: 600 }}>Score</th>
+                                  <th style={{ padding: 10, textAlign: 'center', fontWeight: 600 }}>Attendance Rate</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {employeePerformance.history.map((item: any, idx: number) => (
+                                  <tr key={idx} style={{ borderTop: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: 10 }}>{new Date(item.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
+                                    <td style={{ padding: 10, textAlign: 'center' }}>
+                                      <span style={{
+                                        padding: '4px 10px',
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        background: item.score >= 80 ? '#dcfce7' : item.score >= 60 ? '#fef3c7' : '#fee2e2',
+                                        color: item.score >= 80 ? '#166534' : item.score >= 60 ? '#92400e' : '#991b1b',
+                                      }}>
+                                        {item.score}%
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: 10, textAlign: 'center' }}>{item.attendanceRate}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Working Days Info */}
+                        <div style={{ padding: 16, background: '#f0f9ff', borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: 12, color: '#0369a1', marginBottom: 4 }}>Total Working Days (This Period)</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#0369a1' }}>{employeePerformance.totalWorkingDays || 0}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 12, color: '#0369a1', marginBottom: 4 }}>Previous Score</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#0369a1' }}>{employeePerformance.previousScore || 0}%</div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+                        <TrendingUp style={{ width: 48, height: 48, margin: '0 auto 16px', opacity: 0.5 }} />
+                        <p style={{ margin: 0 }}>No performance data available</p>
+                        <p style={{ margin: '8px 0 0 0', fontSize: 13 }}>Performance metrics will appear once attendance and reports are recorded.</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -1635,6 +2426,130 @@ const resetFormData = React.useCallback(() => {
                 Edit Employee
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Document Verification Modal */}
+      <Dialog open={showVerifyDocModal} onOpenChange={setShowVerifyDocModal}>
+        <DialogContent style={{ maxWidth: 500 }}>
+          <DialogHeader>
+            <DialogTitle style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CheckCircle style={{ width: 24, height: 24, color: '#7c3aed' }} />
+              Review Document
+            </DialogTitle>
+          </DialogHeader>
+          {selectedVerifyDoc && (
+            <div style={{ padding: '16px 0' }}>
+              <div style={{ padding: 16, background: '#f8fafc', borderRadius: 10, marginBottom: 20 }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0 }}>
+                  {selectedVerifyDoc.documentType?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                </p>
+                <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0 0' }}>{selectedVerifyDoc.fileName}</p>
+                <button
+                  onClick={() => handleViewVerificationDoc(selectedVerifyDoc.id)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 16px',
+                    borderRadius: 8,
+                    border: '1px solid #7c3aed',
+                    backgroundColor: '#f5f3ff',
+                    color: '#7c3aed',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    marginTop: 12,
+                  }}
+                >
+                  <Eye style={{ height: 14, width: 14 }} />
+                  View Document
+                </button>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <Label style={{ display: 'block', marginBottom: 8 }}>Decision</Label>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    onClick={() => setVerifyDocData({ ...verifyDocData, status: 'VERIFIED' })}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      borderRadius: 10,
+                      border: verifyDocData.status === 'VERIFIED' ? '2px solid #22c55e' : '1px solid #e5e7eb',
+                      backgroundColor: verifyDocData.status === 'VERIFIED' ? '#f0fdf4' : '#fff',
+                      color: verifyDocData.status === 'VERIFIED' ? '#22c55e' : '#6b7280',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <CheckCircle style={{ height: 18, width: 18 }} />
+                    Verify
+                  </button>
+                  <button
+                    onClick={() => setVerifyDocData({ ...verifyDocData, status: 'REJECTED' })}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      borderRadius: 10,
+                      border: verifyDocData.status === 'REJECTED' ? '2px solid #ef4444' : '1px solid #e5e7eb',
+                      backgroundColor: verifyDocData.status === 'REJECTED' ? '#fef2f2' : '#fff',
+                      color: verifyDocData.status === 'REJECTED' ? '#ef4444' : '#6b7280',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <XCircle style={{ height: 18, width: 18 }} />
+                    Reject
+                  </button>
+                </div>
+              </div>
+
+              {verifyDocData.status === 'REJECTED' && (
+                <div style={{ marginBottom: 16 }}>
+                  <Label style={{ display: 'block', marginBottom: 8 }}>Rejection Reason *</Label>
+                  <textarea
+                    value={verifyDocData.rejectionReason}
+                    onChange={(e) => setVerifyDocData({ ...verifyDocData, rejectionReason: e.target.value })}
+                    placeholder="Please provide a reason for rejection..."
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: 10,
+                      border: '1px solid #e5e7eb',
+                      fontSize: 14,
+                      resize: 'vertical',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowVerifyDocModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleVerifyDocument}
+              disabled={verifyingDoc || (verifyDocData.status === 'REJECTED' && !verifyDocData.rejectionReason)}
+              style={{
+                background: verifyDocData.status === 'VERIFIED' ? '#22c55e' : '#ef4444',
+              }}
+            >
+              {verifyingDoc ? 'Processing...' : verifyDocData.status === 'VERIFIED' ? 'Verify Document' : 'Reject Document'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
