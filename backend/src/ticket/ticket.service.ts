@@ -5,17 +5,21 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   CreateTicketDto,
   UpdateTicketStatusDto,
   AddCommentDto,
   TicketFilterDto,
 } from './dto/ticket.dto';
-import { TicketStatus } from '@prisma/client';
+import { TicketStatus, NotificationType, NotificationChannel } from '@prisma/client';
 
 @Injectable()
 export class TicketService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   async create(createdBy: string, dto: CreateTicketDto) {
     // Find the employee's manager or HR to assign
@@ -39,7 +43,7 @@ export class TicketService {
       assignedTo = hrUser?.employee?.id || createdBy;
     }
 
-    return this.prisma.ticket.create({
+    const ticket = await this.prisma.ticket.create({
       data: {
         subject: dto.subject,
         description: dto.description,
@@ -58,6 +62,39 @@ export class TicketService {
         },
       },
     });
+
+    // Notify assignee immediately
+    if (assignedTo && assignedTo !== createdBy) {
+      try {
+        const assigneeUser = await this.prisma.user.findFirst({
+          where: { employee: { id: assignedTo } },
+        });
+        if (assigneeUser) {
+          const creatorName = ticket.creator
+            ? `${ticket.creator.firstName} ${ticket.creator.lastName}`
+            : 'An employee';
+          await this.prisma.notification.create({
+            data: {
+              recipientId: assigneeUser.id,
+              subject: `New Ticket Assigned: ${dto.subject}`,
+              message: `${creatorName} has raised a ticket "${dto.subject}" (${dto.category || 'General'}) and it has been assigned to you.`,
+              type: 'TICKET_ASSIGNED' as NotificationType,
+              channel: NotificationChannel.BOTH,
+              metadata: {
+                ticketId: ticket.id,
+                category: dto.category || 'General',
+                creatorName,
+              },
+              sentAt: new Date(),
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Failed to notify assignee about ticket:', error);
+      }
+    }
+
+    return ticket;
   }
 
   async getMyTickets(employeeId: string) {
@@ -78,6 +115,35 @@ export class TicketService {
   async getAssignedTickets(employeeId: string) {
     return this.prisma.ticket.findMany({
       where: { assignedTo: employeeId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        creator: {
+          select: { firstName: true, lastName: true },
+        },
+        assignee: {
+          select: { firstName: true, lastName: true },
+        },
+      },
+    });
+  }
+
+  async getTeamTickets(managerId: string) {
+    // Get all direct reports of this manager
+    const teamMembers = await this.prisma.employee.findMany({
+      where: { managerId },
+      select: { id: true },
+    });
+    const teamIds = teamMembers.map((m) => m.id);
+    // Include manager's own tickets too
+    teamIds.push(managerId);
+
+    return this.prisma.ticket.findMany({
+      where: {
+        OR: [
+          { createdBy: { in: teamIds } },
+          { assignedTo: { in: teamIds } },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         creator: {
@@ -170,12 +236,22 @@ export class TicketService {
       throw new NotFoundException('Ticket not found');
     }
 
+    // Prevent reopening resolved or closed tickets
+    if (
+      (ticket.status === TicketStatus.RESOLVED || ticket.status === TicketStatus.CLOSED) &&
+      (dto.status === TicketStatus.OPEN || dto.status === TicketStatus.IN_PROGRESS)
+    ) {
+      throw new BadRequestException(
+        'Resolved or closed tickets cannot be reopened. Please create a new ticket instead.',
+      );
+    }
+
     const data: any = { status: dto.status };
     if (dto.status === TicketStatus.RESOLVED) {
       data.resolvedAt = new Date();
     }
 
-    return this.prisma.ticket.update({
+    const updated = await this.prisma.ticket.update({
       where: { id },
       data,
       include: {
@@ -187,6 +263,35 @@ export class TicketService {
         },
       },
     });
+
+    // Notify the ticket creator about the status change
+    try {
+      const creatorUser = await this.prisma.user.findFirst({
+        where: { employee: { id: ticket.createdBy } },
+      });
+      if (creatorUser && ticket.createdBy !== employeeId) {
+        const statusLabel = dto.status.replace('_', ' ');
+        await this.prisma.notification.create({
+          data: {
+            recipientId: creatorUser.id,
+            subject: `Ticket Updated: ${ticket.subject}`,
+            message: `Your ticket "${ticket.subject}" has been updated to ${statusLabel}.`,
+            type: 'TICKET_STATUS_UPDATED' as NotificationType,
+            channel: NotificationChannel.IN_APP,
+            metadata: {
+              ticketId: ticket.id,
+              oldStatus: ticket.status,
+              newStatus: dto.status,
+            },
+            sentAt: new Date(),
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Failed to notify creator about ticket status change:', error);
+    }
+
+    return updated;
   }
 
   async addComment(id: string, employeeId: string, dto: AddCommentDto) {
@@ -233,7 +338,19 @@ export class TicketService {
       throw new NotFoundException('Ticket not found');
     }
 
-    return this.prisma.ticket.update({
+    // Only the assignee can mark a ticket as resolved
+    if (ticket.assignedTo !== employeeId) {
+      throw new ForbiddenException(
+        'Only the assigned person can resolve this ticket.',
+      );
+    }
+
+    // Prevent resolving already resolved/closed tickets
+    if (ticket.status === TicketStatus.RESOLVED || ticket.status === TicketStatus.CLOSED) {
+      throw new BadRequestException('This ticket is already resolved or closed.');
+    }
+
+    const updated = await this.prisma.ticket.update({
       where: { id },
       data: {
         status: TicketStatus.RESOLVED,
@@ -248,6 +365,37 @@ export class TicketService {
         },
       },
     });
+
+    // Notify the ticket creator that their ticket has been resolved
+    try {
+      const creatorUser = await this.prisma.user.findFirst({
+        where: { employee: { id: ticket.createdBy } },
+      });
+      if (creatorUser && ticket.createdBy !== employeeId) {
+        const resolverName = updated.assignee
+          ? `${updated.assignee.firstName} ${updated.assignee.lastName}`
+          : 'The assignee';
+        await this.prisma.notification.create({
+          data: {
+            recipientId: creatorUser.id,
+            subject: `Ticket Resolved: ${ticket.subject}`,
+            message: `${resolverName} has resolved your ticket "${ticket.subject}".`,
+            type: 'TICKET_STATUS_UPDATED' as NotificationType,
+            channel: NotificationChannel.BOTH,
+            metadata: {
+              ticketId: ticket.id,
+              oldStatus: ticket.status,
+              newStatus: 'RESOLVED',
+            },
+            sentAt: new Date(),
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Failed to notify creator about ticket resolution:', error);
+    }
+
+    return updated;
   }
 
   async getStatistics() {

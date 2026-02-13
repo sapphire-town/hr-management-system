@@ -25,6 +25,7 @@ interface ReportingParam {
   label: string;
   target: number;
   type: string;
+  allowProof?: boolean;
 }
 
 interface Role {
@@ -94,13 +95,13 @@ export default function DailyReportingConfigPage() {
       setEditParams([...(role.dailyReportingParams || [])]);
     }
     setShowAddParam(false);
-    setNewParam({ key: '', label: '', target: 0, type: 'number' });
+    setNewParam({ key: '', label: '', target: 0, type: 'number', allowProof: false });
   };
 
   const handleCancelEdit = () => {
     setEditingRole(null);
     setShowAddParam(false);
-    setNewParam({ key: '', label: '', target: 0, type: 'number' });
+    setNewParam({ key: '', label: '', target: 0, type: 'number', allowProof: false });
     const role = roles.find((r) => r.id === expandedRole);
     if (role) {
       setEditParams([...(role.dailyReportingParams || [])]);
@@ -128,7 +129,7 @@ export default function DailyReportingConfigPage() {
       return;
     }
     setEditParams([...editParams, { ...newParam }]);
-    setNewParam({ key: '', label: '', target: 0, type: 'number' });
+    setNewParam({ key: '', label: '', target: 0, type: 'number', allowProof: false });
     setShowAddParam(false);
     setMessage(null);
   };
@@ -388,6 +389,9 @@ export default function DailyReportingConfigPage() {
                               <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>
                                 Type
                               </th>
+                              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>
+                                Proof
+                              </th>
                               {isEditing && (
                                 <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>
                                   Actions
@@ -452,6 +456,51 @@ export default function DailyReportingConfigPage() {
                                     </select>
                                   ) : (
                                     <span style={{ fontSize: '13px', color: '#6b7280', textTransform: 'capitalize' }}>{param.type}</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '16px', textAlign: 'center' }}>
+                                  {isEditing ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const updated = [...editParams];
+                                        updated[index] = { ...updated[index], allowProof: !updated[index].allowProof };
+                                        setEditParams(updated);
+                                      }}
+                                      style={{
+                                        width: 40,
+                                        height: 22,
+                                        borderRadius: 11,
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        position: 'relative',
+                                        background: param.allowProof ? '#7c3aed' : '#d1d5db',
+                                        transition: 'background 0.2s',
+                                      }}
+                                    >
+                                      <div style={{
+                                        width: 16,
+                                        height: 16,
+                                        borderRadius: '50%',
+                                        background: '#fff',
+                                        position: 'absolute',
+                                        top: 3,
+                                        left: param.allowProof ? 21 : 3,
+                                        transition: 'left 0.2s',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                      }} />
+                                    </button>
+                                  ) : (
+                                    <span style={{
+                                      padding: '2px 8px',
+                                      borderRadius: '9999px',
+                                      fontSize: '12px',
+                                      fontWeight: 500,
+                                      backgroundColor: param.allowProof ? '#dcfce7' : '#f3f4f6',
+                                      color: param.allowProof ? '#166534' : '#9ca3af',
+                                    }}>
+                                      {param.allowProof ? 'Yes' : 'No'}
+                                    </span>
                                   )}
                                 </td>
                                 {isEditing && (
@@ -553,6 +602,37 @@ export default function DailyReportingConfigPage() {
                               <option value="currency">Currency</option>
                             </select>
                           </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setNewParam({ ...newParam, allowProof: !newParam.allowProof })}
+                            style={{
+                              width: 40,
+                              height: 22,
+                              borderRadius: 11,
+                              border: 'none',
+                              cursor: 'pointer',
+                              position: 'relative',
+                              background: newParam.allowProof ? '#7c3aed' : '#d1d5db',
+                              transition: 'background 0.2s',
+                            }}
+                          >
+                            <div style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              background: '#fff',
+                              position: 'absolute',
+                              top: 3,
+                              left: newParam.allowProof ? 21 : 3,
+                              transition: 'left 0.2s',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                            }} />
+                          </button>
+                          <span style={{ fontSize: '13px', fontWeight: 500, color: '#6b7280' }}>
+                            Allow proof document upload (optional for employees)
+                          </span>
                         </div>
                         <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                           <button onClick={handleAddParam} style={buttonPrimary}>

@@ -15,6 +15,21 @@ export class DirectorsListService {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * Log an audit entry for directors list actions
+   */
+  private async logAudit(userId: string, action: string, entityId: string, changes?: any) {
+    await this.prisma.auditLog.create({
+      data: {
+        userId,
+        action,
+        entity: 'DirectorList',
+        entityId,
+        changes: changes || undefined,
+      },
+    });
+  }
+
+  /**
    * Nominate an employee for the director's list
    */
   async nominateEmployee(dto: NominateEmployeeDto, nominatorId: string) {
@@ -44,7 +59,13 @@ export class DirectorsListService {
       throw new BadRequestException('Cannot nominate yourself');
     }
 
-    return this.prisma.directorList.create({
+    // Get nominator's userId for audit log
+    const nominator = await this.prisma.employee.findUnique({
+      where: { id: nominatorId },
+      select: { userId: true },
+    });
+
+    const nomination = await this.prisma.directorList.create({
       data: {
         employeeId: dto.employeeId,
         nominatedBy: nominatorId,
@@ -64,6 +85,15 @@ export class DirectorsListService {
         },
       },
     });
+
+    // Audit log
+    await this.logAudit(nominator?.userId || nominatorId, 'NOMINATE', nomination.id, {
+      employeeId: dto.employeeId,
+      period: dto.period,
+      reason: dto.reason,
+    });
+
+    return nomination;
   }
 
   /**
@@ -71,7 +101,7 @@ export class DirectorsListService {
    */
   async getAll(filters: NominationFilterDto) {
     const page = parseInt(filters.page || '1', 10);
-    const limit = parseInt(filters.limit || '10', 10);
+    const limit = parseInt(filters.limit || '50', 10);
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -199,6 +229,18 @@ export class DirectorsListService {
       });
     }
 
+    // Audit log
+    const approver = await this.prisma.employee.findUnique({
+      where: { id: approvedBy },
+      select: { userId: true },
+    });
+
+    await this.logAudit(approver?.userId || approvedBy, dto.isApproved ? 'APPROVE_NOMINATION' : 'REJECT_NOMINATION', id, {
+      nominationId: id,
+      employeeId: nomination.employeeId,
+      isApproved: dto.isApproved,
+    });
+
     return updated;
   }
 
@@ -212,7 +254,7 @@ export class DirectorsListService {
     const [total, currentMonth, approved, pending] = await Promise.all([
       this.prisma.directorList.count(),
       this.prisma.directorList.count({ where: { period: currentPeriod } }),
-      this.prisma.directorList.count({ where: { isApproved: true } }),
+      this.prisma.directorList.count({ where: { isApproved: true, approvedBy: { not: null } } }),
       this.prisma.directorList.count({ where: { approvedBy: null } }),
     ]);
 

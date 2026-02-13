@@ -5,6 +5,7 @@ import {
   DollarSign,
   Calendar,
   ChevronDown,
+  Download,
   FileText,
   TrendingDown,
   TrendingUp,
@@ -13,6 +14,7 @@ import { DashboardLayout } from '@/components/layout';
 import { Modal } from '@/components/ui/modal';
 import { useAuthStore } from '@/store/auth-store';
 import { payrollAPI } from '@/lib/api-client';
+import { exportPayslipToPDF } from '@/lib/export-utils';
 import { format } from 'date-fns';
 
 interface Payslip {
@@ -39,11 +41,19 @@ interface Payslip {
   };
 }
 
+interface LeaveBalance {
+  sick: number;
+  casual: number;
+  earned: number;
+  total: number;
+}
+
 export default function PayslipsPage() {
   const { user } = useAuthStore();
   const [payslips, setPayslips] = React.useState<Payslip[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [isIntern, setIsIntern] = React.useState(false);
+  const [leaveBalance, setLeaveBalance] = React.useState<LeaveBalance | null>(null);
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear().toString());
   const [selectedPayslip, setSelectedPayslip] = React.useState<Payslip | null>(null);
   const [detailModalOpen, setDetailModalOpen] = React.useState(false);
@@ -59,9 +69,11 @@ export default function PayslipsPage() {
       if (response.data?.isIntern !== undefined) {
         setIsIntern(response.data.isIntern);
         setPayslips(response.data.payslips || []);
+        setLeaveBalance(response.data.leaveBalance || null);
       } else {
         // Fallback for old format
         setPayslips(response.data || []);
+        setLeaveBalance(null);
       }
     } catch (error) {
       console.error('Error fetching payslips:', error);
@@ -86,6 +98,11 @@ export default function PayslipsPage() {
   const viewPayslipDetails = (payslip: Payslip) => {
     setSelectedPayslip(payslip);
     setDetailModalOpen(true);
+  };
+
+  const handleDownloadPDF = (e: React.MouseEvent, payslip: Payslip) => {
+    e.stopPropagation();
+    exportPayslipToPDF(payslip, leaveBalance);
   };
 
   // Calculate year totals
@@ -238,6 +255,79 @@ export default function PayslipsPage() {
           </div>
         )}
 
+        {/* Leave Balance - Only for non-interns when leaveBalance exists */}
+        {!isIntern && leaveBalance && (
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+          }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Calendar style={{ height: '20px', width: '20px', color: '#7c3aed' }} />
+              Leave Balance
+            </h3>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: '16px'
+            }}>
+              <div style={{
+                padding: '16px',
+                background: '#f0fdf4',
+                borderRadius: '12px',
+                textAlign: 'center',
+                borderLeft: '4px solid #22c55e'
+              }}>
+                <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>Sick Leave</p>
+                <p style={{ margin: '8px 0 0 0', fontSize: '28px', fontWeight: '700', color: '#166534' }}>
+                  {leaveBalance.sick}
+                </p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#6b7280' }}>days remaining</p>
+              </div>
+              <div style={{
+                padding: '16px',
+                background: '#eff6ff',
+                borderRadius: '12px',
+                textAlign: 'center',
+                borderLeft: '4px solid #3b82f6'
+              }}>
+                <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>Casual Leave</p>
+                <p style={{ margin: '8px 0 0 0', fontSize: '28px', fontWeight: '700', color: '#1e40af' }}>
+                  {leaveBalance.casual}
+                </p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#6b7280' }}>days remaining</p>
+              </div>
+              <div style={{
+                padding: '16px',
+                background: '#fdf4ff',
+                borderRadius: '12px',
+                textAlign: 'center',
+                borderLeft: '4px solid #a855f7'
+              }}>
+                <p style={{ margin: 0, fontSize: '12px', color: '#6b7280', fontWeight: '500' }}>Earned Leave</p>
+                <p style={{ margin: '8px 0 0 0', fontSize: '28px', fontWeight: '700', color: '#7e22ce' }}>
+                  {leaveBalance.earned}
+                </p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#6b7280' }}>days remaining</p>
+              </div>
+              <div style={{
+                padding: '16px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: '12px',
+                textAlign: 'center',
+                color: 'white'
+              }}>
+                <p style={{ margin: 0, fontSize: '12px', opacity: 0.9, fontWeight: '500' }}>Total Balance</p>
+                <p style={{ margin: '8px 0 0 0', fontSize: '28px', fontWeight: '700' }}>
+                  {leaveBalance.total}
+                </p>
+                <p style={{ margin: '4px 0 0 0', fontSize: '12px', opacity: 0.9 }}>days remaining</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Payslips List - Only for non-interns */}
         {!isIntern && (
         <div style={{
@@ -312,15 +402,45 @@ export default function PayslipsPage() {
                       </p>
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <p style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#22c55e' }}>
-                      {formatCurrency(payslip.netPay)}
-                    </p>
-                    {payslip.deductions > 0 && (
-                      <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#ef4444' }}>
-                        -{formatCurrency(payslip.deductions)} deductions
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#22c55e' }}>
+                        {formatCurrency(payslip.netPay)}
                       </p>
-                    )}
+                      {payslip.deductions > 0 && (
+                        <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#ef4444' }}>
+                          -{formatCurrency(payslip.deductions)} deductions
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={(e) => handleDownloadPDF(e, payslip)}
+                      title="Download PDF"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                        color: 'white',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.1)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <Download style={{ width: '18px', height: '18px' }} />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -455,6 +575,38 @@ export default function PayslipsPage() {
                 </span>
               </div>
             </div>
+
+            {/* Download PDF Button */}
+            <button
+              onClick={(e) => handleDownloadPDF(e, selectedPayslip)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                width: '100%',
+                padding: '14px 24px',
+                borderRadius: '12px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                color: 'white',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.4)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'none';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <Download style={{ width: '18px', height: '18px' }} />
+              Download PDF
+            </button>
 
             {/* Generated Info */}
             <p style={{ margin: 0, fontSize: '12px', color: '#9ca3af', textAlign: 'center' }}>

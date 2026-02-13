@@ -150,6 +150,8 @@ export const attendanceAPI = {
   updateHoliday: (id: string, data: { date?: string; name?: string; description?: string }) =>
     apiClient.patch(`/attendance/holidays/${id}`, data),
   deleteHoliday: (id: string) => apiClient.delete(`/attendance/holidays/${id}`),
+  exportCsv: (startDate: string, endDate: string) =>
+    apiClient.get('/attendance/export', { params: { startDate, endDate }, responseType: 'blob' }),
 };
 
 export const performanceAPI = {
@@ -166,6 +168,10 @@ export const performanceAPI = {
     apiClient.get(`/performance/employee/${employeeId}/history`, { params: { months } }),
   getTeamPerformance: (params?: { period?: string }) =>
     apiClient.get('/performance/team', { params }),
+  getTeamDashboard: (params?: { period?: string; startDate?: string; endDate?: string }) =>
+    apiClient.get('/performance/team/dashboard', { params }),
+  getAllTeams: (params?: { period?: string }) =>
+    apiClient.get('/performance/team/all', { params }),
 
   // Director/HR endpoints
   getAllEmployeesPerformance: (params?: { period?: string }) =>
@@ -211,6 +217,7 @@ export const ticketAPI = {
   create: (data: any) => apiClient.post('/ticket', data),
   getMyTickets: () => apiClient.get('/ticket/my'),
   getAssignedTickets: () => apiClient.get('/ticket/assigned'),
+  getTeamTickets: () => apiClient.get('/ticket/team'),
   getAll: (params?: any) => apiClient.get('/ticket/all', { params }),
   getById: (id: string) => apiClient.get(`/ticket/${id}`),
   getStatistics: () => apiClient.get('/ticket/statistics'),
@@ -327,17 +334,36 @@ export const resignationAPI = {
 export const payrollAPI = {
   getMyPayslips: (year?: string) => apiClient.get('/payroll/my', { params: year ? { year } : {} }),
   getPayslipById: (id: string) => apiClient.get(`/payroll/${id}`),
-  downloadPayslip: (id: string) =>
-    apiClient.get(`/payroll/${id}/download`, { responseType: 'blob' }),
   generatePayslips: (month: string) => apiClient.post('/payroll/generate', { month }),
   getPayslipsByMonth: (month: string) => apiClient.get(`/payroll/month/${month}`),
   getPayrollStats: (month: string) => apiClient.get(`/payroll/stats/${month}`),
   regeneratePayslip: (id: string) => apiClient.post(`/payroll/${id}/regenerate`),
+  // Working days configuration
+  getWorkingDays: (month: string) => apiClient.get(`/payroll/working-days/${month}`),
+  setWorkingDays: (data: { month: string; workingDays: number; notes?: string; overrides?: any[] }) =>
+    apiClient.post('/payroll/working-days', data),
+  // Leave balance management
+  getLeaveBalances: () => apiClient.get('/payroll/leave-balances'),
+  adjustLeaveBalance: (employeeId: string, data: { leaveType: string; adjustment: number; reason: string }) =>
+    apiClient.patch(`/payroll/leave-balance/${employeeId}`, data),
 };
 
 export const rewardAPI = {
+  // Rewards
   create: (data: any) => apiClient.post('/reward', data),
+  getAll: (params?: any) => apiClient.get('/reward/all', { params }),
+  getMyRewards: () => apiClient.get('/reward/my'),
   getEmployeeRewards: (employeeId: string) => apiClient.get(`/reward/employee/${employeeId}`),
+  getById: (id: string) => apiClient.get(`/reward/${id}`),
+  deleteReward: (id: string) => apiClient.delete(`/reward/${id}`),
+  getStats: () => apiClient.get('/reward/stats'),
+  // Badges
+  getAllBadges: (includeInactive?: boolean) =>
+    apiClient.get('/reward/badges', { params: includeInactive ? { includeInactive: 'true' } : {} }),
+  getBadgeById: (id: string) => apiClient.get(`/reward/badges/${id}`),
+  createBadge: (data: any) => apiClient.post('/reward/badges', data),
+  updateBadge: (id: string, data: any) => apiClient.patch(`/reward/badges/${id}`, data),
+  deleteBadge: (id: string) => apiClient.delete(`/reward/badges/${id}`),
 };
 
 export const directorsListAPI = {
@@ -392,6 +418,22 @@ export const recruitmentAPI = {
 
   // Statistics
   getOverallStatistics: () => apiClient.get('/recruitment/statistics'),
+};
+
+export const hiringAPI = {
+  create: (data: { roleId: string; positions: number; justification: string; urgency: string }) =>
+    apiClient.post('/hiring', data),
+  getAll: (params?: { status?: string; urgency?: string; roleId?: string; page?: string; limit?: string }) =>
+    apiClient.get('/hiring', { params }),
+  getStats: () => apiClient.get('/hiring/stats'),
+  getById: (id: string) => apiClient.get(`/hiring/${id}`),
+  update: (id: string, data: { positions?: number; justification?: string; urgency?: string }) =>
+    apiClient.patch(`/hiring/${id}`, data),
+  approve: (id: string, data: { approve: boolean; rejectionReason?: string }) =>
+    apiClient.patch(`/hiring/${id}/approve`, data),
+  updateStatus: (id: string, status: string) =>
+    apiClient.patch(`/hiring/${id}/status`, { status }),
+  delete: (id: string) => apiClient.delete(`/hiring/${id}`),
 };
 
 export const settingsAPI = {
@@ -488,4 +530,14 @@ export const dailyReportAPI = {
   getPendingTeamReports: () => apiClient.get('/daily-reports/team/pending'),
   verify: (id: string, data?: { managerComment?: string }) =>
     apiClient.patch(`/daily-reports/${id}/verify`, data || {}),
+
+  // Performance analytics endpoints
+  getMyPerformance: (params?: { period?: string; startDate?: string; endDate?: string }) =>
+    apiClient.get('/daily-reports/performance/my', { params }),
+  getEmployeePerformance: (employeeId: string, params?: { period?: string; startDate?: string; endDate?: string }) =>
+    apiClient.get(`/daily-reports/performance/employee/${employeeId}`, { params }),
+  getTeamPerformance: (params?: { period?: string; startDate?: string; endDate?: string }) =>
+    apiClient.get('/daily-reports/performance/team', { params }),
+  getAllPerformance: (params?: { period?: string; startDate?: string; endDate?: string }) =>
+    apiClient.get('/daily-reports/performance/all', { params }),
 };

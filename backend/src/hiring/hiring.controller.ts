@@ -48,21 +48,21 @@ export class HiringController {
   }
 
   @Get()
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get all hiring requests' })
   async findAll(@Query() filters: HiringFilterDto) {
     return this.hiringService.findAll(filters);
   }
 
   @Get('stats')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Get hiring statistics' })
   async getStats() {
     return this.hiringService.getStats();
   }
 
   @Get(':id')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get hiring request by ID' })
   async findById(@Param('id') id: string) {
     return this.hiringService.findById(id);

@@ -60,7 +60,23 @@ export class PerformanceController {
     return this.performanceService.getEmployeePerformanceHistory(employeeId, months || 6);
   }
 
-  // Get team performance (Manager)
+  // Get team performance dashboard (comprehensive with attrition)
+  @Get('team/dashboard')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get team performance dashboard with attrition rate' })
+  async getTeamPerformanceDashboard(@Request() req: any, @Query() filters: PerformanceFilterDto) {
+    return this.performanceService.getTeamPerformanceDashboard(req.user.employeeId, filters);
+  }
+
+  // Get all teams performance (Director/HR)
+  @Get('team/all')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Get all teams performance overview' })
+  async getAllTeamsPerformance(@Query() filters: PerformanceFilterDto) {
+    return this.performanceService.getAllTeamsPerformance(filters);
+  }
+
+  // Get team performance (Manager) - legacy
   @Get('team')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get team performance metrics' })

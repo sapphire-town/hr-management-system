@@ -228,8 +228,9 @@ export default function DirectorsListPage() {
   const [showApproveModal, setShowApproveModal] = React.useState(false);
 
   const [filterStatus, setFilterStatus] = React.useState<string>('all');
-  const [filterPeriod, setFilterPeriod] = React.useState<string>(getCurrentPeriod());
+  const [filterPeriod, setFilterPeriod] = React.useState<string>('');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [error, setError] = React.useState<string | null>(null);
 
   const [nominationForm, setNominationForm] = React.useState({
     employeeId: '',
@@ -250,22 +251,42 @@ export default function DirectorsListPage() {
   const fetchData = React.useCallback(async () => {
     try {
       setLoading(true);
-      const params: any = {};
+      setError(null);
+      const params: any = { limit: '100' };
       if (filterStatus !== 'all') params.status = filterStatus;
       if (filterPeriod) params.period = filterPeriod;
 
-      const [nominationsRes, statsRes, employeesRes] = await Promise.all([
+      // Fetch nominations, stats, and employees independently so one failure doesn't block others
+      const [nominationsResult, statsResult, employeesResult] = await Promise.allSettled([
         directorsListAPI.getAll(params),
         directorsListAPI.getStats(),
         employeeAPI.getAll(),
       ]);
 
-      setNominations(nominationsRes.data?.data || nominationsRes.data || []);
-      setStats(statsRes.data);
-      const empData = employeesRes.data?.data || employeesRes.data || [];
-      setEmployees(Array.isArray(empData) ? empData : []);
-    } catch (error) {
-      console.error('Error fetching data:', error);
+      if (nominationsResult.status === 'fulfilled') {
+        const nomData = nominationsResult.value.data?.data || nominationsResult.value.data || [];
+        setNominations(Array.isArray(nomData) ? nomData : []);
+      } else {
+        console.error('Error fetching nominations:', nominationsResult.reason);
+        setNominations([]);
+        setError('Failed to load nominations. Please check your permissions or try again.');
+      }
+
+      if (statsResult.status === 'fulfilled') {
+        setStats(statsResult.value.data);
+      } else {
+        console.error('Error fetching stats:', statsResult.reason);
+      }
+
+      if (employeesResult.status === 'fulfilled') {
+        const empData = employeesResult.value.data?.data || employeesResult.value.data || [];
+        setEmployees(Array.isArray(empData) ? empData : []);
+      } else {
+        console.error('Error fetching employees:', employeesResult.reason);
+      }
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -283,9 +304,10 @@ export default function DirectorsListPage() {
       await directorsListAPI.nominate(nominationForm);
       setShowNominateModal(false);
       setNominationForm({ employeeId: '', period: getCurrentPeriod(), reason: '' });
-      fetchData();
+      await fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to submit nomination');
+      const msg = error.response?.data?.message || 'Failed to submit nomination';
+      alert(msg);
     } finally {
       setSubmitting(false);
     }
@@ -299,9 +321,10 @@ export default function DirectorsListPage() {
       await directorsListAPI.approve(selectedNomination.id, isApproved);
       setShowApproveModal(false);
       setSelectedNomination(null);
-      fetchData();
+      await fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to process nomination');
+      const msg = error.response?.data?.message || 'Failed to process nomination';
+      alert(msg);
     } finally {
       setSubmitting(false);
     }
@@ -379,6 +402,24 @@ export default function DirectorsListPage() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Error Banner */}
+          {error && (
+            <div style={{
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#b91c1c',
+              fontSize: '14px',
+            }}>
+              <X style={{ width: '16px', height: '16px', flexShrink: 0 }} />
+              {error}
+            </div>
+          )}
+
           {/* Stats Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             <div style={styles.card}>

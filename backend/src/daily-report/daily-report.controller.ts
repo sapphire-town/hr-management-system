@@ -26,6 +26,7 @@ import {
   VerifyDailyReportDto,
   DailyReportFilterDto,
 } from './dto/daily-report.dto';
+import { ReportPerformanceFilterDto } from './dto/daily-report-performance.dto';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -186,6 +187,53 @@ export class DailyReportController {
     @Body() dto: VerifyDailyReportDto,
   ) {
     return this.dailyReportService.verify(id, req.user.employeeId, dto);
+  }
+
+  // Performance analytics endpoints (must be before :id catch-all)
+
+  @Get('performance/my')
+  @ApiOperation({ summary: 'Get my daily report performance analytics' })
+  async getMyPerformance(
+    @Request() req: any,
+    @Query() filters: ReportPerformanceFilterDto,
+  ) {
+    return this.dailyReportService.getEmployeeReportPerformance(
+      req.user.employeeId,
+      filters,
+    );
+  }
+
+  @Get('performance/employee/:employeeId')
+  @Roles(UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Get a specific employee\'s daily report performance' })
+  async getEmployeePerformance(
+    @Param('employeeId') employeeId: string,
+    @Query() filters: ReportPerformanceFilterDto,
+  ) {
+    return this.dailyReportService.getEmployeeReportPerformance(
+      employeeId,
+      filters,
+    );
+  }
+
+  @Get('performance/team')
+  @Roles(UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Get team daily report performance analytics' })
+  async getTeamPerformance(
+    @Request() req: any,
+    @Query() filters: ReportPerformanceFilterDto,
+  ) {
+    return this.dailyReportService.getTeamReportPerformance(
+      req.user.employeeId,
+      filters,
+    );
+  }
+
+  @Get('performance/all')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Get all employees daily report performance' })
+  async getAllPerformance(@Query() filters: ReportPerformanceFilterDto) {
+    return this.dailyReportService.getAllEmployeesReportPerformance(filters);
   }
 
   @Get(':id')

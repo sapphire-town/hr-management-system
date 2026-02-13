@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -14,7 +15,12 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
 import { PayrollService } from './payroll.service';
-import { GeneratePayslipsDto, PayslipFilterDto } from './dto/payroll.dto';
+import {
+  GeneratePayslipsDto,
+  PayslipFilterDto,
+  SetWorkingDaysDto,
+  AdjustLeaveBalanceDto,
+} from './dto/payroll.dto';
 
 interface JwtPayload {
   sub: string;
@@ -54,6 +60,58 @@ export class PayrollController {
   async generatePayslips(@Body() dto: GeneratePayslipsDto) {
     return this.payrollService.generatePayslips(dto);
   }
+
+  // ==================== WORKING DAYS CONFIG ====================
+
+  /**
+   * Get working days configuration for a month
+   */
+  @Get('working-days/:month')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Get working days config for a month' })
+  async getWorkingDays(@Param('month') month: string) {
+    return this.payrollService.getMonthlyWorkingDays(month);
+  }
+
+  /**
+   * Set working days for a month (HR only)
+   */
+  @Post('working-days')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Set working days for a month' })
+  async setWorkingDays(
+    @Body() dto: SetWorkingDaysDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.payrollService.setMonthlyWorkingDays(dto, user.employeeId || user.sub);
+  }
+
+  // ==================== LEAVE BALANCE MANAGEMENT ====================
+
+  /**
+   * Get all employee leave balances (HR view)
+   */
+  @Get('leave-balances')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Get all employee leave balances' })
+  async getLeaveBalances() {
+    return this.payrollService.getLeaveBalances();
+  }
+
+  /**
+   * Adjust an employee's leave balance (HR only)
+   */
+  @Patch('leave-balance/:employeeId')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Adjust employee leave balance' })
+  async adjustLeaveBalance(
+    @Param('employeeId') employeeId: string,
+    @Body() dto: AdjustLeaveBalanceDto,
+  ) {
+    return this.payrollService.adjustLeaveBalance(employeeId, dto);
+  }
+
+  // ==================== PAYSLIP QUERIES ====================
 
   /**
    * Get all payslips for a specific month (HR view)
@@ -96,7 +154,7 @@ export class PayrollController {
    * Regenerate a specific payslip (HR only)
    */
   @Post(':id/regenerate')
-  @Roles(UserRole.HR_HEAD)
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Regenerate a specific payslip' })
   async regeneratePayslip(@Param('id') id: string) {
     return this.payrollService.regeneratePayslip(id);

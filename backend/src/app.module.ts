@@ -22,6 +22,8 @@ import { SettingsModule } from './settings/settings.module';
 import { TargetModule } from './target/target.module';
 import { DailyReportModule } from './daily-report/daily-report.module';
 import { TicketModule } from './ticket/ticket.module';
+import { HiringModule } from './hiring/hiring.module';
+import { RewardModule } from './reward/reward.module';
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { TicketModule } from './ticket/ticket.module';
     TargetModule,
     DailyReportModule,
     TicketModule,
+    HiringModule,
+    RewardModule,
   ],
 })
 export class AppModule {}

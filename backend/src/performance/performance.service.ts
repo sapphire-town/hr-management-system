@@ -547,4 +547,160 @@ export class PerformanceService {
 
     return performances.sort((a, b) => b.overallScore - a.overallScore);
   }
+
+  // ==================== Team Performance Dashboard ====================
+
+  async getTeamPerformanceDashboard(managerId: string, filters: PerformanceFilterDto) {
+    const period = filters.period || PerformancePeriod.MONTHLY;
+    const { start, end } = this.getDateRange(period, filters.startDate, filters.endDate);
+
+    // Get manager info
+    const manager = await this.prisma.employee.findUnique({
+      where: { id: managerId },
+      include: { role: true },
+    });
+    if (!manager) throw new Error('Manager not found');
+
+    // Get current team members
+    const teamMembers = await this.prisma.employee.findMany({
+      where: { managerId },
+      include: {
+        user: true,
+        role: true,
+        resignation: true,
+      },
+    });
+
+    // Calculate individual performance for each team member
+    const memberPerformances: EmployeePerformanceDto[] = [];
+    for (const member of teamMembers) {
+      try {
+        const perf = await this.getEmployeePerformance(member.id, filters);
+        memberPerformances.push(perf);
+      } catch (e) {
+        // Skip on error
+      }
+    }
+
+    // Aggregate metrics
+    const teamSize = teamMembers.length;
+    const avgScore = memberPerformances.length > 0
+      ? Math.round(memberPerformances.reduce((s, p) => s + p.overallScore, 0) / memberPerformances.length)
+      : 0;
+    const avgAttendance = memberPerformances.length > 0
+      ? Math.round(memberPerformances.reduce((s, p) => s + p.attendanceScore, 0) / memberPerformances.length)
+      : 0;
+    const avgLeave = memberPerformances.length > 0
+      ? Math.round(memberPerformances.reduce((s, p) => s + p.leaveScore, 0) / memberPerformances.length)
+      : 0;
+    const avgTask = memberPerformances.length > 0
+      ? Math.round(memberPerformances.reduce((s, p) => s + p.taskCompletionScore, 0) / memberPerformances.length)
+      : 0;
+
+    // Previous period comparison
+    const avgPrevious = memberPerformances.length > 0
+      ? Math.round(memberPerformances.reduce((s, p) => s + p.previousScore, 0) / memberPerformances.length)
+      : 0;
+
+    // Calculate attrition/iteration rate for the period
+    const attritionRate = await this.calculateTeamAttritionRate(managerId, start, end);
+
+    // Performance distribution
+    const distribution = {
+      excellent: memberPerformances.filter(p => p.overallScore >= 90).length,
+      good: memberPerformances.filter(p => p.overallScore >= 75 && p.overallScore < 90).length,
+      average: memberPerformances.filter(p => p.overallScore >= 60 && p.overallScore < 75).length,
+      needsImprovement: memberPerformances.filter(p => p.overallScore < 60).length,
+    };
+
+    // Sort and rank
+    const sorted = [...memberPerformances].sort((a, b) => b.overallScore - a.overallScore);
+
+    return {
+      managerId,
+      managerName: `${manager.firstName} ${manager.lastName}`,
+      managerRole: manager.role?.name || '',
+      period: period,
+      periodStart: start.toISOString(),
+      periodEnd: end.toISOString(),
+      teamSize,
+      averageScore: avgScore,
+      previousAverageScore: avgPrevious,
+      trend: this.determineTrend(avgScore, avgPrevious),
+      averageAttendance: avgAttendance,
+      averageLeaveScore: avgLeave,
+      averageTaskCompletion: avgTask,
+      attritionRate,
+      performanceDistribution: distribution,
+      topPerformers: sorted.slice(0, 3),
+      needsImprovement: sorted.filter(p => p.overallScore < 70).slice(0, 3),
+      members: sorted,
+    };
+  }
+
+  async getAllTeamsPerformance(filters: PerformanceFilterDto) {
+    // Get all managers (employees who have subordinates)
+    const managers = await this.prisma.employee.findMany({
+      where: {
+        subordinates: { some: {} },
+      },
+      include: {
+        role: true,
+        _count: { select: { subordinates: true } },
+      },
+    });
+
+    const teams = [];
+    for (const mgr of managers) {
+      try {
+        const dashboard = await this.getTeamPerformanceDashboard(mgr.id, filters);
+        teams.push({
+          managerId: mgr.id,
+          managerName: `${mgr.firstName} ${mgr.lastName}`,
+          managerRole: mgr.role?.name || '',
+          teamSize: dashboard.teamSize,
+          averageScore: dashboard.averageScore,
+          previousAverageScore: dashboard.previousAverageScore,
+          trend: dashboard.trend,
+          averageAttendance: dashboard.averageAttendance,
+          attritionRate: dashboard.attritionRate,
+          performanceDistribution: dashboard.performanceDistribution,
+        });
+      } catch (e) {
+        // Skip on error
+      }
+    }
+
+    return teams.sort((a, b) => b.averageScore - a.averageScore);
+  }
+
+  private async calculateTeamAttritionRate(
+    managerId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<{ rate: number; left: number; startCount: number }> {
+    // Count employees at the start of the period who were on this team
+    // We approximate by counting current team + anyone who resigned during the period
+    const currentTeam = await this.prisma.employee.count({
+      where: { managerId },
+    });
+
+    // Count resignations from this manager's team during the period
+    const resignations = await this.prisma.resignation.findMany({
+      where: {
+        employee: { managerId },
+        status: { in: ['APPROVED', 'EXIT_COMPLETE'] as any },
+        lastWorkingDay: {
+          gte: periodStart,
+          lte: periodEnd,
+        },
+      },
+    });
+
+    const left = resignations.length;
+    const startCount = currentTeam + left; // Approximate team size at period start
+    const rate = startCount > 0 ? Math.round((left / startCount) * 100 * 10) / 10 : 0;
+
+    return { rate, left, startCount };
+  }
 }

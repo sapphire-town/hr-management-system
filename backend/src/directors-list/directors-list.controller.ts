@@ -46,35 +46,35 @@ export class DirectorsListController {
   }
 
   @Get()
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get all nominations' })
   async getAll(@Query() filters: NominationFilterDto) {
     return this.directorsListService.getAll(filters);
   }
 
   @Get('current')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get current month nominations' })
   async getCurrentMonth() {
     return this.directorsListService.getCurrentMonthNominations();
   }
 
   @Get('stats')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get nomination statistics' })
   async getStats() {
     return this.directorsListService.getStats();
   }
 
   @Get('period/:period')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get nominations by period' })
   async getByPeriod(@Param('period') period: string) {
     return this.directorsListService.getByPeriod(period);
   }
 
   @Get('employee/:id')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get employee nomination history' })
   async getEmployeeHistory(@Param('id') employeeId: string) {
     return this.directorsListService.getEmployeeNominationHistory(employeeId);

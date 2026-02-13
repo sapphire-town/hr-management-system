@@ -4,17 +4,21 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import {
   CreateHiringRequestDto,
   UpdateHiringRequestDto,
   ApproveHiringRequestDto,
   HiringFilterDto,
 } from './dto/hiring.dto';
-import { HiringRequestStatus } from '@prisma/client';
+import { HiringRequestStatus, NotificationType, NotificationChannel } from '@prisma/client';
 
 @Injectable()
 export class HiringService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Create a new hiring request
@@ -29,7 +33,7 @@ export class HiringService {
       throw new NotFoundException('Role not found');
     }
 
-    return this.prisma.hiringRequest.create({
+    const request = await this.prisma.hiringRequest.create({
       data: {
         requestedBy: requesterId,
         roleId: dto.roleId,
@@ -47,6 +51,38 @@ export class HiringService {
         },
       },
     });
+
+    // Notify all HR users about the new hiring request
+    try {
+      const hrUsers = await this.prisma.user.findMany({
+        where: { role: 'HR_HEAD', isActive: true },
+      });
+
+      const requesterName = `${request.requester.firstName} ${request.requester.lastName}`;
+      for (const hrUser of hrUsers) {
+        await this.prisma.notification.create({
+          data: {
+            recipientId: hrUser.id,
+            subject: `New Hiring Request: ${role.name} (${dto.positions} position${dto.positions > 1 ? 's' : ''})`,
+            message: `${requesterName} has submitted a hiring request for ${dto.positions} ${role.name} position${dto.positions > 1 ? 's' : ''} with ${dto.urgency} urgency. Justification: ${dto.justification}`,
+            type: 'HIRING_REQUEST_CREATED' as NotificationType,
+            channel: NotificationChannel.BOTH,
+            metadata: {
+              hiringRequestId: request.id,
+              roleName: role.name,
+              positions: dto.positions,
+              urgency: dto.urgency,
+              requesterName,
+            },
+            sentAt: new Date(),
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Failed to notify HR about hiring request:', error);
+    }
+
+    return request;
   }
 
   /**
@@ -54,7 +90,7 @@ export class HiringService {
    */
   async findAll(filters: HiringFilterDto) {
     const page = parseInt(filters.page || '1', 10);
-    const limit = parseInt(filters.limit || '10', 10);
+    const limit = parseInt(filters.limit || '50', 10);
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -177,7 +213,7 @@ export class HiringService {
       ? HiringRequestStatus.APPROVED
       : HiringRequestStatus.REJECTED;
 
-    return this.prisma.hiringRequest.update({
+    const updated = await this.prisma.hiringRequest.update({
       where: { id },
       data: {
         status: newStatus,
@@ -194,6 +230,37 @@ export class HiringService {
         },
       },
     });
+
+    // If approved, notify HR that this is now a target to fill
+    if (dto.approve) {
+      try {
+        const hrUsers = await this.prisma.user.findMany({
+          where: { role: 'HR_HEAD', isActive: true },
+        });
+
+        for (const hrUser of hrUsers) {
+          await this.prisma.notification.create({
+            data: {
+              recipientId: hrUser.id,
+              subject: `Hiring Approved: ${updated.role.name} (${updated.positions} position${updated.positions > 1 ? 's' : ''})`,
+              message: `A hiring request for ${updated.positions} ${updated.role.name} position${updated.positions > 1 ? 's' : ''} has been approved by the Director. Please begin the recruitment process.`,
+              type: 'HIRING_REQUEST_APPROVED' as NotificationType,
+              channel: NotificationChannel.BOTH,
+              metadata: {
+                hiringRequestId: updated.id,
+                roleName: updated.role.name,
+                positions: updated.positions,
+              },
+              sentAt: new Date(),
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Failed to notify HR about hiring approval:', error);
+      }
+    }
+
+    return updated;
   }
 
   /**

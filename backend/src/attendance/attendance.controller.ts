@@ -7,8 +7,10 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -68,7 +70,7 @@ export class AttendanceController {
   }
 
   @Get()
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get all attendance records' })
   async findAll(@Query() filters: AttendanceFilterDto) {
     return this.attendanceService.findAll(filters);
@@ -126,7 +128,7 @@ export class AttendanceController {
   }
 
   @Get('team')
-  @Roles(UserRole.MANAGER)
+  @Roles(UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Get team attendance' })
   async getTeamAttendance(
     @CurrentUser() user: JwtPayload,
@@ -171,6 +173,21 @@ export class AttendanceController {
     @Body() dto: OverrideAttendanceDto,
   ) {
     return this.attendanceService.overrideAttendance(dto, user.employeeId || user.sub);
+  }
+
+  // Export attendance as CSV
+  @Get('export')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Export attendance data as CSV' })
+  async exportAttendance(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Res() res: Response,
+  ) {
+    const csv = await this.attendanceService.exportAttendance(startDate, endDate);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=attendance_${startDate}_to_${endDate}.csv`);
+    res.send(csv);
   }
 
   // Holiday Management

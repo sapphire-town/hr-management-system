@@ -68,6 +68,8 @@ export default function NotificationsPage() {
       router.push('/dashboard/resignation/manage');
     } else if (notification.type === 'RESIGNATION_STATUS') {
       router.push('/dashboard/resignation');
+    } else if (notification.type === 'PROMOTION') {
+      router.push('/dashboard');
     }
   };
 
@@ -78,7 +80,8 @@ export default function NotificationsPage() {
       notification.type === 'DOCUMENT_RELEASED' ||
       notification.type === 'NEW_EMPLOYEE_ONBOARDING' ||
       notification.type === 'RESIGNATION_SUBMITTED' ||
-      notification.type === 'RESIGNATION_STATUS';
+      notification.type === 'RESIGNATION_STATUS' ||
+      notification.type === 'PROMOTION';
   };
 
   const filteredNotifications = filter === 'all'
@@ -103,6 +106,7 @@ export default function NotificationsPage() {
       case 'TICKET_ASSIGNED':
         return '🎫';
       case 'PROMOTION':
+        return '🚀';
       case 'REWARD':
         return '🎉';
       case 'NEW_EMPLOYEE_ONBOARDING':

@@ -34,7 +34,7 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get()
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Get company settings' })
   async getSettings() {
     return this.settingsService.getSettings();
@@ -51,7 +51,7 @@ export class SettingsController {
   }
 
   @Patch('leave-policies')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Update leave policies' })
   async updateLeavePolicies(
     @Body() dto: UpdateLeavePoliciesDto,
@@ -61,7 +61,7 @@ export class SettingsController {
   }
 
   @Patch('notifications')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Update notification preferences' })
   async updateNotificationPreferences(
     @Body() dto: UpdateNotificationPreferencesDto,

@@ -48,7 +48,7 @@ export class RecruitmentService {
 
   async findAllDrives(filters: DriveFilterDto) {
     const page = parseInt(filters.page || '1', 10);
-    const limit = parseInt(filters.limit || '10', 10);
+    const limit = parseInt(filters.limit || '50', 10);
     const skip = (page - 1) * limit;
 
     const where: any = {};

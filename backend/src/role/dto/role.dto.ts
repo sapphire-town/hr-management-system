@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsBoolean, IsInt, Min } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean, IsInt, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class DailyReportingParamDto {
@@ -19,6 +19,11 @@ export class DailyReportingParamDto {
   @ApiProperty({ example: 'number' })
   @IsString()
   type: string;
+
+  @ApiProperty({ example: false, required: false, description: 'Allow employees to upload proof documents for this parameter' })
+  @IsOptional()
+  @IsBoolean()
+  allowProof?: boolean;
 }
 
 export class CreateRoleDto {
@@ -29,6 +34,8 @@ export class CreateRoleDto {
   @ApiProperty({ type: [DailyReportingParamDto], required: false })
   @IsOptional()
   @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DailyReportingParamDto)
   dailyReportingParams?: DailyReportingParamDto[];
 
   @ApiProperty({ required: false })
@@ -45,6 +52,8 @@ export class UpdateRoleDto {
   @ApiProperty({ type: [DailyReportingParamDto], required: false })
   @IsOptional()
   @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DailyReportingParamDto)
   dailyReportingParams?: DailyReportingParamDto[];
 
   @ApiProperty({ required: false })

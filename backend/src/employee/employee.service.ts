@@ -103,12 +103,16 @@ export class EmployeeService {
       return { employee, temporaryPassword: password };
     });
 
-    // Send welcome email with credentials
+    // Send welcome email with credentials and role-specific features
     try {
       await this.notificationService.sendWelcomeEmail(
         dto.email,
         password,
         dto.firstName,
+        {
+          roleName: result.employee.role?.name || 'Employee',
+          userRole: dto.role,
+        },
       );
     } catch (error) {
       console.error('Failed to send welcome email:', error);
@@ -135,7 +139,7 @@ export class EmployeeService {
 
   async findAll(filters: EmployeeFilterDto) {
     const page = parseInt(filters.page || '1', 10);
-    const limit = parseInt(filters.limit || '10', 10);
+    const limit = parseInt(filters.limit || '50', 10);
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -554,12 +558,15 @@ export class EmployeeService {
   async promote(id: string, dto: PromoteEmployeeDto) {
     const employee = await this.prisma.employee.findUnique({
       where: { id },
-      include: { user: true },
+      include: { user: true, role: true },
     });
 
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
+
+    const previousRoleName = employee.role?.name || 'Unknown';
+    const previousUserRole = employee.user.role;
 
     // Update both user role and employee role in transaction
     const result = await this.prisma.$transaction(async (tx) => {
@@ -584,6 +591,28 @@ export class EmployeeService {
 
       return updatedEmployee;
     });
+
+    // Send promotion notification
+    try {
+      await this.notificationService.notifyPromotion(
+        {
+          id: employee.id,
+          userId: employee.userId,
+          firstName: employee.firstName,
+          lastName: employee.lastName,
+          email: employee.user.email,
+          previousRoleName,
+          previousUserRole,
+        },
+        {
+          newRoleName: result.role?.name || 'Unknown',
+          newUserRole: dto.newUserRole,
+          newSalary: dto.newSalary,
+        },
+      );
+    } catch (error) {
+      console.error('Failed to send promotion notification:', error);
+    }
 
     return result;
   }
@@ -1007,11 +1036,11 @@ export class EmployeeService {
         const password = this.generatePassword();
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const defaultLeaveBalances = {
-          sickLeaveBalance: 12,
-          casualLeaveBalance: 12,
-          earnedLeaveBalance: 15,
-        };
+        // Interns get NO paid leave (same as individual create)
+        const isIntern = employeeType === 'INTERN';
+        const defaultLeaveBalances = isIntern
+          ? { sickLeaveBalance: 0, casualLeaveBalance: 0, earnedLeaveBalance: 0 }
+          : { sickLeaveBalance: 12, casualLeaveBalance: 12, earnedLeaveBalance: 15 };
 
         await this.prisma.$transaction(async (tx) => {
           const user = await tx.user.create({
@@ -1042,12 +1071,16 @@ export class EmployeeService {
 
         existingEmails.add(record.email.toLowerCase());
 
-        // Try to send welcome email
+        // Try to send welcome email with role-specific features
         try {
           await this.notificationService.sendWelcomeEmail(
             record.email,
             password,
             record.firstName,
+            {
+              roleName: record.roleName,
+              userRole: userRole,
+            },
           );
         } catch (error) {
           console.error(`Failed to send welcome email to ${record.email}:`, error);

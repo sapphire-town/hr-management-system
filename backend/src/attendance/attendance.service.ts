@@ -135,7 +135,7 @@ export class AttendanceService {
 
   async findAll(filters: AttendanceFilterDto) {
     const page = parseInt(filters.page || '1', 10);
-    const limit = parseInt(filters.limit || '10', 10);
+    const limit = parseInt(filters.limit || '50', 10);
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -400,7 +400,7 @@ export class AttendanceService {
     });
   }
 
-  // HR Override attendance
+  // HR Override attendance with audit trail
   async overrideAttendance(dto: OverrideAttendanceDto, overriddenBy: string) {
     const date = new Date(dto.date);
     date.setHours(0, 0, 0, 0);
@@ -421,8 +421,11 @@ export class AttendanceService {
       },
     });
 
+    const oldStatus = existing?.status || null;
+    let result;
+
     if (existing) {
-      return this.prisma.attendance.update({
+      result = await this.prisma.attendance.update({
         where: { id: existing.id },
         data: {
           status: dto.status,
@@ -435,22 +438,46 @@ export class AttendanceService {
           },
         },
       });
+    } else {
+      result = await this.prisma.attendance.create({
+        data: {
+          employeeId: dto.employeeId,
+          date,
+          status: dto.status,
+          notes: dto.notes ? `[HR Override] ${dto.notes}` : '[HR Override]',
+          markedBy: overriddenBy,
+        },
+        include: {
+          employee: {
+            select: { firstName: true, lastName: true },
+          },
+        },
+      });
     }
 
-    return this.prisma.attendance.create({
-      data: {
-        employeeId: dto.employeeId,
-        date,
-        status: dto.status,
-        notes: dto.notes ? `[HR Override] ${dto.notes}` : '[HR Override]',
-        markedBy: overriddenBy,
-      },
-      include: {
-        employee: {
-          select: { firstName: true, lastName: true },
+    // Log audit trail
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: overriddenBy,
+          action: 'ATTENDANCE_OVERRIDE',
+          entity: 'Attendance',
+          entityId: result.id,
+          changes: {
+            employeeId: dto.employeeId,
+            employeeName: `${employee.firstName} ${employee.lastName}`,
+            date: dto.date,
+            oldStatus: oldStatus || 'NOT_MARKED',
+            newStatus: dto.status,
+            reason: dto.notes || null,
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      console.error('Failed to log audit for attendance override:', error);
+    }
+
+    return result;
   }
 
   // Get calendar with holidays and approved leaves
@@ -665,5 +692,56 @@ export class AttendanceService {
       notes: emp.attendance[0]?.notes || null,
       markedBy: emp.attendance[0]?.markedBy || null,
     }));
+  }
+
+  // Export attendance data as CSV string
+  async exportAttendance(startDate: string, endDate: string): Promise<string> {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const records = await this.prisma.attendance.findMany({
+      where: {
+        date: { gte: start, lte: end },
+      },
+      include: {
+        employee: {
+          select: {
+            firstName: true,
+            lastName: true,
+            role: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: [{ date: 'asc' }, { employee: { firstName: 'asc' } }],
+    });
+
+    const headers = ['Date', 'Employee Name', 'Role', 'Status', 'Check-In', 'Check-Out', 'Working Hours', 'Notes', 'Marked By'];
+    const rows = records.map((r) => [
+      r.date.toISOString().split('T')[0],
+      `${r.employee.firstName} ${r.employee.lastName}`,
+      r.employee.role.name,
+      r.status,
+      r.checkInTime ? r.checkInTime.toISOString() : '',
+      r.checkOutTime ? r.checkOutTime.toISOString() : '',
+      r.workingHours != null ? String(r.workingHours) : '',
+      r.notes || '',
+      r.markedBy || '',
+    ]);
+
+    const escapeCsv = (val: string) => {
+      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    const csvLines = [
+      headers.map(escapeCsv).join(','),
+      ...rows.map((row) => row.map(escapeCsv).join(',')),
+    ];
+
+    return csvLines.join('\n');
   }
 }

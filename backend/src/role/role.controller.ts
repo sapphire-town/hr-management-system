@@ -32,8 +32,8 @@ export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 
   @Post()
-  @Roles(UserRole.DIRECTOR)
-  @ApiOperation({ summary: 'Create a new role (Director only)' })
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Create a new role' })
   async create(@Body() dto: CreateRoleDto, @CurrentUser() user: JwtPayload) {
     return this.roleService.create(dto, user.sub);
   }

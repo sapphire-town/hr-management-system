@@ -28,6 +28,7 @@ interface ReportingParam {
   label: string;
   target: number;
   type: string;
+  allowProof?: boolean;
 }
 
 interface ParamData {
@@ -103,6 +104,7 @@ export default function DailyReportPage() {
   const [expandedParam, setExpandedParam] = React.useState<string | null>(null);
   const [newLink, setNewLink] = React.useState<Record<string, string>>({});
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [uploadingProofKey, setUploadingProofKey] = React.useState<string | null>(null);
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
@@ -223,6 +225,34 @@ export default function DailyReportPage() {
 
   const handleRemoveAttachment = (index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleProofUpload = async (paramKey: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.gif,.webp';
+    input.onchange = async (e: any) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      setUploadingProofKey(paramKey);
+      try {
+        const response = await dailyReportAPI.uploadAttachments(Array.from(files) as File[]);
+        const uploaded: Attachment[] = (response.data.attachments || []).map((a: any) => ({
+          ...a,
+          paramKey,
+        }));
+        setAttachments((prev) => [...prev, ...uploaded]);
+      } catch (error: any) {
+        alert(error.response?.data?.message || 'Failed to upload proof');
+      } finally {
+        setUploadingProofKey(null);
+      }
+    };
+    input.click();
+  };
+
+  const getParamProofs = (paramKey: string) => {
+    return attachments.filter((a) => a.paramKey === paramKey);
   };
 
   const handleSubmit = async () => {
@@ -690,6 +720,59 @@ export default function DailyReportPage() {
                             </button>
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Per-parameter proof upload */}
+                    {param.allowProof && (
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #e5e7eb' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 500, color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <File style={{ width: '12px', height: '12px' }} /> Proof (optional)
+                          </span>
+                          {!(todayReport?.isVerified && isTodaySelected && !editingReport) && (
+                            <button
+                              onClick={() => handleProofUpload(param.key)}
+                              disabled={uploadingProofKey === param.key}
+                              style={{
+                                padding: '3px 10px',
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                borderRadius: '6px',
+                                border: '1px solid #d1d5db',
+                                background: '#fff',
+                                color: '#7c3aed',
+                                cursor: uploadingProofKey === param.key ? 'wait' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <Upload style={{ width: '11px', height: '11px' }} />
+                              {uploadingProofKey === param.key ? 'Uploading...' : 'Upload Proof'}
+                            </button>
+                          )}
+                        </div>
+                        {getParamProofs(param.key).length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {getParamProofs(param.key).map((proof, pIdx) => (
+                              <div key={pIdx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 8px', backgroundColor: '#f5f3ff', borderRadius: '6px', fontSize: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                  <File style={{ width: '12px', height: '12px', color: '#7c3aed' }} />
+                                  <span style={{ color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proof.fileName}</span>
+                                </div>
+                                {!(todayReport?.isVerified && isTodaySelected && !editingReport) && (
+                                  <button onClick={() => {
+                                    const globalIdx = attachments.findIndex(a => a === proof);
+                                    if (globalIdx !== -1) handleRemoveAttachment(globalIdx);
+                                  }} style={{ padding: '2px', border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer' }} title="Remove">
+                                    <X style={{ width: '12px', height: '12px' }} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -127,6 +127,12 @@ enum NotificationType {
   BIRTHDAY
   POLICY_UPDATE
   NEW_EMPLOYEE_ONBOARDING
+  DAILY_REPORT_OVERDUE
+  DAILY_REPORT_SUBMITTED
+  HIRING_REQUEST_CREATED
+  HIRING_REQUEST_APPROVED
+  TICKET_STATUS_UPDATED
+  PAYSLIP_GENERATED
 }
 
 enum NotificationChannel {
@@ -207,6 +213,9 @@ model Employee {
   sickLeaveBalance   Float    @default(12)
   casualLeaveBalance Float    @default(12)
   earnedLeaveBalance Float    @default(15)
+
+  // Earned leave accrual tracker (consecutive working days without absence)
+  consecutiveWorkingDays Int  @default(0)
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -394,17 +403,34 @@ model DocumentVerification {
   @@map("document_verifications")
 }
 
+model Badge {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  description   String?
+  icon          String?  // emoji or icon identifier
+  color         String?  // hex color for display
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  rewards       Reward[]
+
+  @@map("badges")
+}
+
 model Reward {
   id            String   @id @default(uuid())
   employeeId    String
   amount        Float?
-  badgeName     String?
+  badgeId       String?
+  badgeName     String?  // kept for backward compat / custom badge text
   reason        String
   awardedBy     String
   awardDate     DateTime @default(now())
   createdAt     DateTime @default(now())
 
   employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  badge         Badge?   @relation(fields: [badgeId], references: [id])
 
   @@map("rewards")
 }
@@ -591,6 +617,19 @@ model Payslip {
 
   @@unique([employeeId, month])
   @@map("payslips")
+}
+
+model MonthlyWorkingDays {
+  id          String   @id @default(uuid())
+  month       String   @unique  // Format: "2024-01"
+  workingDays Int
+  overrides   Json     @default("[]") // [{employeeId, workingDays, reason}]
+  setBy       String
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("monthly_working_days")
 }
 
 model HiringRequest {

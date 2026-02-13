@@ -96,6 +96,7 @@ export class ResignationController {
   }
 
   @Get(':id')
+  @Roles(UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Get resignation by ID' })
   async getResignationById(@Param('id') id: string) {
     return this.resignationService.getResignationById(id);

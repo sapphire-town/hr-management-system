@@ -15,6 +15,7 @@ export interface User {
     roleId: string;
     managerId?: string;
     employeeType?: 'FULL_TIME' | 'INTERN';
+    role?: { id: string; name: string };
   };
 }
 

@@ -102,8 +102,9 @@ export class FeedbackController {
     return this.feedbackService.getFeedbackBySubject(subject);
   }
 
-  // Get single feedback
+  // Get single feedback (restricted to HR/Director for confidentiality)
   @Get(':id')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Get single feedback' })
   async findOne(@Param('id') id: string) {
     return this.feedbackService.findOne(id);

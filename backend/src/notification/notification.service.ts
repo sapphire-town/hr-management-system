@@ -31,19 +31,125 @@ export class NotificationService {
     });
   }
 
-  async sendWelcomeEmail(email: string, password: string, firstName: string) {
-    const frontendUrl = this.configService.get('FRONTEND_URL');
+  async sendWelcomeEmail(
+    email: string,
+    password: string,
+    firstName: string,
+    roleInfo?: { roleName: string; userRole: string },
+  ) {
+    const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+
+    const userRoleLabels: Record<string, string> = {
+      DIRECTOR: 'Director',
+      HR_HEAD: 'HR Head',
+      MANAGER: 'Manager',
+      EMPLOYEE: 'Employee',
+      INTERVIEWER: 'Interviewer',
+    };
+
+    const accessLabel = roleInfo ? (userRoleLabels[roleInfo.userRole] || roleInfo.userRole) : '';
+
+    // Role-specific feature lists
+    const featuresByRole: Record<string, string[]> = {
+      DIRECTOR: [
+        'Company-wide Dashboard & Analytics',
+        'Employee Management & Roles',
+        "Director's List & Performance Tracking",
+        'Daily Reporting Configuration',
+        'Hiring Requests & Resignations',
+        'Ticket Management',
+        'Feedback Reports',
+      ],
+      HR_HEAD: [
+        'Employee Onboarding & Management',
+        'Leave & Attendance Management',
+        'Payroll Processing',
+        'Document Management',
+        'Daily Reporting Configuration',
+        'Asset & Reimbursement Requests',
+        'Recruitment',
+        'Ticket Management',
+      ],
+      MANAGER: [
+        'Team Dashboard & Performance',
+        'Leave Approvals',
+        'Daily Report Reviews',
+        'Attendance Monitoring',
+        'Resignation Management',
+        'Team Tickets',
+      ],
+      EMPLOYEE: [
+        'Personal Dashboard',
+        'Attendance Tracking',
+        'Leave Management',
+        'Daily Reports Submission',
+        'Document Access & Payslips',
+        'Asset & Reimbursement Requests',
+        'Tickets & Feedback',
+      ],
+      INTERVIEWER: [
+        'Placement Drive Management',
+        'Attendance Tracking',
+        'Leave Management',
+        'Daily Reports Submission',
+        'Document Access & Payslips',
+        'Tickets & Feedback',
+      ],
+    };
+
+    const features = roleInfo ? (featuresByRole[roleInfo.userRole] || featuresByRole['EMPLOYEE']) : [];
+
+    const featuresHtml = features.length > 0
+      ? `
+        <div style="background: #f0fdf4; border-radius: 8px; padding: 16px; margin: 16px 0; border-left: 4px solid #22c55e;">
+          <h3 style="color: #166534; margin: 0 0 8px; font-size: 15px;">Your Dashboard Features</h3>
+          <p style="color: #374151; font-size: 13px; margin: 0 0 8px;">As a <strong>${roleInfo!.roleName}</strong> (${accessLabel} access), you have access to:</p>
+          <ul style="color: #374151; margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8;">
+            ${features.map(f => `<li>${f}</li>`).join('\n            ')}
+          </ul>
+        </div>`
+      : '';
+
+    const roleInfoHtml = roleInfo
+      ? `<p style="color: #374151;"><strong>Designation:</strong> ${roleInfo.roleName}</p>
+         <p style="color: #374151;"><strong>Access Level:</strong> ${accessLabel}</p>`
+      : '';
+
     const mailOptions = {
       from: this.configService.get('EMAIL_FROM'),
       to: email,
       subject: 'Welcome to HR Management System',
       html: `
-        <h1>Welcome ${firstName}!</h1>
-        <p>Your account has been created successfully.</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Temporary Password:</strong> ${password}</p>
-        <p>Please login and change your password immediately.</p>
-        <p><a href="${frontendUrl}/auth/login">Login Here</a></p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #7c3aed, #6d28d9); padding: 24px; border-radius: 12px 12px 0 0;">
+            <h2 style="color: #ffffff; margin: 0;">Welcome to HR Management System</h2>
+            <p style="color: #e9d5ff; margin: 8px 0 0; font-size: 14px;">Your account is ready</p>
+          </div>
+          <div style="background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+            <p style="color: #374151; font-size: 16px;">Hello <strong>${firstName}</strong>,</p>
+            <p style="color: #374151;">Your account has been created successfully. Here are your login credentials:</p>
+
+            <div style="background: #f5f3ff; border-radius: 8px; padding: 16px; margin: 16px 0; border-left: 4px solid #7c3aed;">
+              <p style="color: #374151; margin: 0 0 8px;"><strong>Email:</strong> ${email}</p>
+              <p style="color: #374151; margin: 0;"><strong>Temporary Password:</strong> ${password}</p>
+            </div>
+
+            ${roleInfoHtml}
+            ${featuresHtml}
+
+            <div style="background: #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 16px 0; border-left: 4px solid #f59e0b;">
+              <p style="color: #92400e; font-size: 13px; margin: 0;">
+                <strong>Important:</strong> Please log in and change your password immediately for security.
+              </p>
+            </div>
+
+            <div style="text-align: center; margin-top: 20px;">
+              <a href="${frontendUrl}/auth/login" style="display: inline-block; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #ffffff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                Login to Your Dashboard
+              </a>
+            </div>
+          </div>
+        </div>
       `,
     };
 
@@ -185,6 +291,122 @@ export class NotificationService {
     });
 
     await this.createNotification(employeeEmail, subject, html, 'email');
+  }
+
+  async notifyPromotion(employee: {
+    id: string;
+    userId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    previousRoleName: string;
+    previousUserRole: string;
+  }, promotion: {
+    newRoleName: string;
+    newUserRole: string;
+    newSalary?: number;
+  }) {
+    try {
+      const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3000';
+
+      const userRoleLabels: Record<string, string> = {
+        DIRECTOR: 'Director',
+        HR_HEAD: 'HR Head',
+        MANAGER: 'Manager',
+        EMPLOYEE: 'Employee',
+        INTERVIEWER: 'Interviewer',
+      };
+
+      const newAccessLabel = userRoleLabels[promotion.newUserRole] || promotion.newUserRole;
+      const prevAccessLabel = userRoleLabels[employee.previousUserRole] || employee.previousUserRole;
+
+      const subject = `Congratulations on Your Promotion, ${employee.firstName}!`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #7c3aed, #6d28d9); padding: 24px; border-radius: 12px 12px 0 0;">
+            <h2 style="color: #ffffff; margin: 0;">Promotion Notification</h2>
+            <p style="color: #e9d5ff; margin: 8px 0 0; font-size: 14px;">Your role has been updated</p>
+          </div>
+          <div style="background: #ffffff; padding: 24px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+            <p style="color: #374151; margin: 0 0 16px; font-size: 16px;">
+              Congratulations <strong>${employee.firstName} ${employee.lastName}</strong>! Your role has been updated by the Director.
+            </p>
+
+            <div style="background: #f5f3ff; border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid #7c3aed;">
+              <h3 style="color: #5b21b6; margin: 0 0 12px; font-size: 16px;">Role Change Details</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280; width: 160px;">Previous Designation:</td>
+                  <td style="padding: 8px 0; color: #111827;">${employee.previousRoleName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280;">New Designation:</td>
+                  <td style="padding: 8px 0; color: #7c3aed; font-weight: 600;">${promotion.newRoleName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280;">Previous Access Level:</td>
+                  <td style="padding: 8px 0; color: #111827;">${prevAccessLabel}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280;">New Access Level:</td>
+                  <td style="padding: 8px 0; color: #7c3aed; font-weight: 600;">${newAccessLabel}</td>
+                </tr>
+                ${promotion.newSalary ? `
+                <tr>
+                  <td style="padding: 8px 0; color: #6b7280;">Updated Salary:</td>
+                  <td style="padding: 8px 0; color: #059669; font-weight: 600;">₹${promotion.newSalary.toLocaleString()}</td>
+                </tr>
+                ` : ''}
+              </table>
+            </div>
+
+            <p style="color: #6b7280; font-size: 14px; margin: 0 0 16px;">
+              Your dashboard has been updated with new features and responsibilities corresponding to your new role. Please log in to explore your updated access.
+            </p>
+
+            <div style="text-align: center; margin-top: 20px;">
+              <a href="${frontendUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #ffffff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                Go to Dashboard
+              </a>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Send email
+      try {
+        await this.transporter.sendMail({
+          from: this.configService.get('EMAIL_FROM'),
+          to: employee.email,
+          subject,
+          html,
+        });
+      } catch (emailError) {
+        console.error('Failed to send promotion email:', emailError);
+      }
+
+      // Create in-app notification
+      await this.prisma.notification.create({
+        data: {
+          recipientId: employee.userId,
+          subject,
+          message: `You have been promoted from ${employee.previousRoleName} to ${promotion.newRoleName}. Your access level is now ${newAccessLabel}.`,
+          type: NotificationType.PROMOTION,
+          channel: NotificationChannel.BOTH,
+          metadata: {
+            employeeId: employee.id,
+            previousRoleName: employee.previousRoleName,
+            previousUserRole: employee.previousUserRole,
+            newRoleName: promotion.newRoleName,
+            newUserRole: promotion.newUserRole,
+            newSalary: promotion.newSalary,
+          },
+          sentAt: new Date(),
+        },
+      });
+    } catch (error) {
+      console.error('Failed to send promotion notification:', error);
+    }
   }
 
   async sendRewardNotificationEmail(employeeEmail: string, amount: number, badgeName: string, reason: string) {

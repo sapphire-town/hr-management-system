@@ -62,6 +62,14 @@ export class TicketController {
     return this.ticketService.getAssignedTickets(user.employeeId);
   }
 
+  @Get('team')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get team tickets (Manager)' })
+  async getTeamTickets(@CurrentUser() user: JwtPayload) {
+    if (!user.employeeId) return [];
+    return this.ticketService.getTeamTickets(user.employeeId);
+  }
+
   @Get('all')
   @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Get all tickets (HR/Director)' })

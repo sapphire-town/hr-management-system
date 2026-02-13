@@ -42,7 +42,7 @@ export class LeaveController {
   }
 
   @Get()
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get all leave requests' })
   async findAll(@Query() filters: LeaveFilterDto) {
     return this.leaveService.findAll(filters);
@@ -127,7 +127,7 @@ export class LeaveController {
   }
 
   @Get('team-calendar')
-  @Roles(UserRole.MANAGER)
+  @Roles(UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Get team leave calendar with holidays' })
   @ApiQuery({ name: 'year', required: true, type: Number })
   @ApiQuery({ name: 'month', required: true, type: Number })
