@@ -198,6 +198,8 @@ export default function DepartmentsPage() {
   const [requirementsForm, setRequirementsForm] = React.useState({ minimumRequired: 0 });
 
   const isDirector = user?.role === 'DIRECTOR';
+  const isHRHead = user?.role === 'HR_HEAD';
+  const canManage = isDirector || isHRHead;
 
   React.useEffect(() => {
     setMounted(true);
@@ -340,11 +342,11 @@ export default function DepartmentsPage() {
     }
   };
 
-  if (!isDirector) {
+  if (!canManage) {
     return (
       <DashboardLayout title="Departments" description="Access Denied">
         <div style={{ textAlign: 'center', padding: '80px 0', color: '#6b7280' }}>
-          Only Directors can access this page.
+          Only Directors and HR Heads can access this page.
         </div>
       </DashboardLayout>
     );

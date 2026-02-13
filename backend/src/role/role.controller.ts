@@ -67,15 +67,15 @@ export class RoleController {
   }
 
   @Patch(':id/requirements')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Set employee requirements for role' })
   async setRequirements(@Param('id') id: string, @Body() dto: SetRequirementDto) {
     return this.roleService.setRequirements(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.DIRECTOR)
-  @ApiOperation({ summary: 'Delete role (Director only)' })
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Delete role' })
   async delete(@Param('id') id: string) {
     return this.roleService.delete(id);
   }

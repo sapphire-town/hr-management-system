@@ -5,12 +5,16 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import { CreateRoleDto, UpdateRoleDto, SetRequirementDto, RoleFilterDto } from './dto/role.dto';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class RoleService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   async create(dto: CreateRoleDto, createdBy: string) {
     const existing = await this.prisma.role.findUnique({
@@ -117,15 +121,46 @@ export class RoleService {
       updateData.performanceChartConfig = JSON.parse(JSON.stringify(dto.performanceChartConfig));
     }
 
-    console.log('[Role] update - updateData:', JSON.stringify(updateData));
-
     const updated = await this.prisma.role.update({
       where: { id },
       data: updateData,
     });
 
-    console.log('[Role] update - saved successfully:', updated.name);
+    // Notify employees of this role when daily reporting params change
+    if (dto.dailyReportingParams !== undefined) {
+      this.notifyRoleEmployees(id, updated.name, dto.dailyReportingParams).catch((err) =>
+        console.error('[Role] Failed to send param update notifications:', err),
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Send in-app notifications to all active employees of a role
+   * when daily reporting parameters are updated
+   */
+  private async notifyRoleEmployees(roleId: string, roleName: string, params: any[]) {
+    const employees = await this.prisma.employee.findMany({
+      where: { roleId, user: { isActive: true } },
+      include: { user: { select: { id: true } } },
+    });
+
+    const paramNames = params.map((p: any) => p.label).join(', ');
+
+    for (const emp of employees) {
+      if (!emp.user) continue;
+      try {
+        await this.notificationService.sendNotification({
+          recipientId: emp.user.id,
+          subject: 'Daily Reporting Targets Updated',
+          message: `Your daily reporting targets for the ${roleName} role have been updated. Current parameters: ${paramNames || 'None'}. Please check your daily report page for the latest targets.`,
+          type: 'in-app',
+        });
+      } catch (err) {
+        console.error(`[Role] Failed to notify employee ${emp.id}:`, err);
+      }
+    }
   }
 
   async delete(id: string) {

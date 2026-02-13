@@ -103,7 +103,7 @@ export default function PayrollPage() {
   const [leaveBalancesLoading, setLeaveBalancesLoading] = React.useState(false);
   const [adjustModalOpen, setAdjustModalOpen] = React.useState(false);
   const [adjustTarget, setAdjustTarget] = React.useState<LeaveBalance | null>(null);
-  const [adjustLeaveType, setAdjustLeaveType] = React.useState('Sick');
+  const [adjustLeaveType, setAdjustLeaveType] = React.useState('SICK');
   const [adjustAmount, setAdjustAmount] = React.useState<number>(0);
   const [adjustReason, setAdjustReason] = React.useState('');
   const [savingAdjustment, setSavingAdjustment] = React.useState(false);
@@ -978,9 +978,9 @@ export default function PayrollPage() {
                   boxSizing: 'border-box' as const,
                 }}
               >
-                <option value="Sick">Sick Leave</option>
-                <option value="Casual">Casual Leave</option>
-                <option value="Earned">Earned Leave</option>
+                <option value="SICK">Sick Leave</option>
+                <option value="CASUAL">Casual Leave</option>
+                <option value="EARNED">Earned Leave</option>
               </select>
             </div>
 

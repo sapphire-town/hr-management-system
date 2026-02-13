@@ -16,6 +16,7 @@ enum UserRole {
   MANAGER
   EMPLOYEE
   INTERVIEWER
+  INTERN
 }
 
 enum EmployeeType {
@@ -133,6 +134,7 @@ enum NotificationType {
   HIRING_REQUEST_APPROVED
   TICKET_STATUS_UPDATED
   PAYSLIP_GENERATED
+  DAILY_TARGET_UPDATED
 }
 
 enum NotificationChannel {
@@ -245,6 +247,7 @@ model Employee {
   roundEvaluations  RoundEvaluation[]
   evaluationEdits   RoundEvaluationHistory[]
   hiringRequests    HiringRequest[] @relation("HiringRequestRequester")
+  documentTemplates DocumentTemplate[] @relation("TemplateCreator")
 
   @@map("employees")
 }
@@ -383,6 +386,23 @@ model Document {
   employee      Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("documents")
+}
+
+model DocumentTemplate {
+  id           String   @id @default(uuid())
+  name         String
+  documentType String
+  description  String?
+  filePath     String
+  fileName     String
+  placeholders Json     @default("[]")
+  createdBy    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  creator      Employee @relation("TemplateCreator", fields: [createdBy], references: [id])
+
+  @@map("document_templates")
 }
 
 model DocumentVerification {
@@ -691,6 +711,8 @@ model CompanySettings {
   workingDays             Json     @default("[1,2,3,4,5]")
   leavePolicies           Json     @default("{}")
   notificationPreferences Json     @default("{}")
+  companyLogo             String?
+  payslipTemplate         Json     @default("{}")
   updatedAt               DateTime @updatedAt
   updatedBy               String?
 

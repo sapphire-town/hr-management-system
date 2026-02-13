@@ -608,7 +608,9 @@ export class DailyReportService {
       orderBy: { reportDate: 'asc' },
     });
 
-    const params = (employee.role.dailyReportingParams as any[]) || [];
+    // Only include measurable parameters (exclude text type which have no numeric target)
+    const allParams = (employee.role.dailyReportingParams as any[]) || [];
+    const params = allParams.filter(p => p.type !== 'text');
     const workingDays = await this.getWorkingDaysInRange(start, end);
 
     // Per-parameter aggregation

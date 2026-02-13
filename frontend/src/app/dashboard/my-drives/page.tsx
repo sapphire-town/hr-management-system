@@ -19,9 +19,23 @@ import {
   AlertCircle,
   History,
   X,
+  Plus,
+  Upload,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { DashboardLayout } from '@/components/layout';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/auth-store';
 import { recruitmentAPI } from '@/lib/api-client';
 
@@ -96,6 +110,23 @@ export default function MyDrivesPage() {
   const [viewingHistory, setViewingHistory] = React.useState<string | null>(null);
   const [evaluationHistory, setEvaluationHistory] = React.useState<EvaluationHistoryEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
+
+  // Add Student modal
+  const [showAddStudentModal, setShowAddStudentModal] = React.useState(false);
+  const [addingStudent, setAddingStudent] = React.useState(false);
+  const [newStudent, setNewStudent] = React.useState({ name: '', email: '', phone: '', college: '', branch: '' });
+
+  // Bulk Import modal
+  const [showBulkImportModal, setShowBulkImportModal] = React.useState(false);
+  const [importFile, setImportFile] = React.useState<File | null>(null);
+  const [importing, setImporting] = React.useState(false);
+  const [importResults, setImportResults] = React.useState<{
+    total: number;
+    successful: number;
+    failed: number;
+    inserted: number;
+    results: Array<{ row: number; name: string; status: 'success' | 'failed'; message?: string }>;
+  } | null>(null);
 
   const fetchMyDrives = React.useCallback(async () => {
     try {
@@ -201,6 +232,86 @@ export default function MyDrivesPage() {
     setEvaluationHistory([]);
   };
 
+  const handleAddStudent = async () => {
+    if (!selectedDrive || !newStudent.name || !newStudent.email) return;
+    try {
+      setAddingStudent(true);
+      const studentData: Record<string, any> = {};
+      if (newStudent.college) studentData.college = newStudent.college;
+      if (newStudent.branch) studentData.branch = newStudent.branch;
+
+      await recruitmentAPI.addStudent(selectedDrive.id, {
+        name: newStudent.name,
+        email: newStudent.email,
+        phone: newStudent.phone,
+        studentData: Object.keys(studentData).length > 0 ? studentData : undefined,
+      });
+      setShowAddStudentModal(false);
+      setNewStudent({ name: '', email: '', phone: '', college: '', branch: '' });
+      await fetchStudents(selectedDrive.id);
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to add student');
+    } finally {
+      setAddingStudent(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await recruitmentAPI.downloadStudentTemplate();
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'student_import_template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to download template');
+    }
+  };
+
+  const handleImportStudents = async () => {
+    if (!selectedDrive || !importFile) return;
+    try {
+      setImporting(true);
+      setImportResults(null);
+      const response = await recruitmentAPI.importStudents(selectedDrive.id, importFile);
+      setImportResults(response.data);
+      await fetchStudents(selectedDrive.id);
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to import students');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const validTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+      ];
+      if (!validTypes.includes(file.type) && !file.name.endsWith('.xlsx')) {
+        alert('Please upload an Excel file (.xlsx)');
+        return;
+      }
+      setImportFile(file);
+      setImportResults(null);
+    }
+  };
+
+  const closeBulkImportModal = () => {
+    setShowBulkImportModal(false);
+    setImportFile(null);
+    setImportResults(null);
+  };
+
   const getStudentRound1Status = (student: Student) => {
     return student.evaluations.find(e => e.roundNumber === 1);
   };
@@ -230,25 +341,45 @@ export default function MyDrivesPage() {
       description={selectedDrive ? 'View students and submit evaluations' : 'View placement drives assigned to you'}
       actions={
         selectedDrive && (
-          <button
-            onClick={handleBackToDrives}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: '1px solid #e5e7eb',
-              backgroundColor: '#ffffff',
-              color: '#374151',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Drives
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleBackToDrives}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1px solid #e5e7eb',
+                backgroundColor: '#ffffff',
+                color: '#374151',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              <ArrowLeft style={{ width: 16, height: 16 }} />
+              Back to Drives
+            </button>
+            <Button
+              variant="outline"
+              onClick={() => setShowBulkImportModal(true)}
+            >
+              <Upload style={{ width: 16, height: 16, marginRight: 8 }} />
+              Bulk Import
+            </Button>
+            <Button
+              onClick={() => { setNewStudent({ name: '', email: '', phone: '', college: '', branch: '' }); setShowAddStudentModal(true); }}
+              style={{
+                background: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 50%, #6366f1 100%)',
+                color: '#fff',
+                boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.35)',
+              }}
+            >
+              <Plus style={{ width: 16, height: 16, marginRight: 8 }} />
+              Add Student
+            </Button>
+          </div>
         )
       }
     >
@@ -1029,6 +1160,194 @@ export default function MyDrivesPage() {
           </div>
         </div>
       )}
+
+      {/* Add Student Modal */}
+      <Dialog open={showAddStudentModal} onOpenChange={setShowAddStudentModal}>
+        <DialogContent style={{ maxWidth: 500 }}>
+          <DialogHeader>
+            <DialogTitle>Add Student to Drive</DialogTitle>
+          </DialogHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '16px 0' }}>
+            <div>
+              <Label>Student Name *</Label>
+              <Input
+                value={newStudent.name}
+                onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
+                placeholder="Full name"
+              />
+            </div>
+            <div>
+              <Label>Email *</Label>
+              <Input
+                type="email"
+                value={newStudent.email}
+                onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
+                placeholder="student@college.edu"
+              />
+            </div>
+            <div>
+              <Label>Phone</Label>
+              <Input
+                value={newStudent.phone}
+                onChange={(e) => setNewStudent({ ...newStudent, phone: e.target.value })}
+                placeholder="9876543210"
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <Label>College</Label>
+                <Input
+                  value={newStudent.college}
+                  onChange={(e) => setNewStudent({ ...newStudent, college: e.target.value })}
+                  placeholder="University name"
+                />
+              </div>
+              <div>
+                <Label>Branch</Label>
+                <Input
+                  value={newStudent.branch}
+                  onChange={(e) => setNewStudent({ ...newStudent, branch: e.target.value })}
+                  placeholder="e.g. Computer Science"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddStudentModal(false)}>Cancel</Button>
+            <Button
+              onClick={handleAddStudent}
+              disabled={addingStudent || !newStudent.name || !newStudent.email}
+            >
+              {addingStudent ? 'Adding...' : 'Add Student'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Modal */}
+      <Dialog open={showBulkImportModal} onOpenChange={(open) => { if (!open) closeBulkImportModal(); else setShowBulkImportModal(true); }}>
+        <DialogContent style={{ maxWidth: 600 }}>
+          <DialogHeader>
+            <DialogTitle>Bulk Import Students</DialogTitle>
+          </DialogHeader>
+          <div style={{ padding: '16px 0' }}>
+            <p style={{ fontSize: 14, color: '#6b7280', margin: '0 0 16px' }}>
+              Upload an Excel file (.xlsx) with student data. Download the template to see the expected format.
+            </p>
+
+            <button
+              onClick={handleDownloadTemplate}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 16px',
+                borderRadius: 8,
+                border: '1px solid #7c3aed',
+                background: '#faf5ff',
+                color: '#7c3aed',
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: 'pointer',
+                marginBottom: 20,
+              }}
+            >
+              <Download style={{ width: 16, height: 16 }} />
+              Download Template
+            </button>
+
+            <div style={{ marginBottom: 16 }}>
+              <Label style={{ marginBottom: 8, display: 'block' }}>Upload Excel File</Label>
+              <div style={{
+                border: '2px dashed #cbd5e1',
+                borderRadius: 12,
+                padding: 24,
+                textAlign: 'center',
+                cursor: 'pointer',
+                background: '#f8fafc',
+                position: 'relative',
+              }}>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFileChange}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    opacity: 0,
+                    cursor: 'pointer',
+                  }}
+                />
+                <FileSpreadsheet style={{ width: 32, height: 32, color: '#7c3aed', margin: '0 auto 8px' }} />
+                {importFile ? (
+                  <div>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: '#1e293b', margin: 0 }}>{importFile.name}</p>
+                    <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0' }}>
+                      {(importFile.size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p style={{ fontSize: 14, fontWeight: 500, color: '#374151', margin: 0 }}>Click to upload or drag & drop</p>
+                    <p style={{ fontSize: 12, color: '#64748b', margin: '4px 0 0' }}>Excel files only (.xlsx)</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {importResults && (
+              <div style={{
+                padding: 16,
+                borderRadius: 12,
+                background: importResults.failed > 0 ? '#fffbeb' : '#f0fdf4',
+                border: `1px solid ${importResults.failed > 0 ? '#fde68a' : '#bbf7d0'}`,
+                marginBottom: 16,
+              }}>
+                <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#059669' }}>{importResults.successful}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Imported</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#dc2626' }}>{importResults.failed}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Failed</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#6b7280' }}>{importResults.total}</div>
+                    <div style={{ fontSize: 11, color: '#6b7280' }}>Total Rows</div>
+                  </div>
+                </div>
+                {importResults.results.filter(r => r.status === 'failed').length > 0 && (
+                  <div style={{ maxHeight: 150, overflowY: 'auto' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#dc2626', marginBottom: 4 }}>Errors:</div>
+                    {importResults.results
+                      .filter(r => r.status === 'failed')
+                      .map((r, i) => (
+                        <div key={i} style={{ fontSize: 12, color: '#991b1b', padding: '2px 0' }}>
+                          Row {r.row}: {r.name} - {r.message}
+                        </div>
+                      ))
+                    }
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeBulkImportModal}>
+              {importResults ? 'Close' : 'Cancel'}
+            </Button>
+            {!importResults && (
+              <Button
+                onClick={handleImportStudents}
+                disabled={importing || !importFile}
+              >
+                {importing ? 'Importing...' : 'Import Students'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <style jsx global>{`
         @keyframes spin {

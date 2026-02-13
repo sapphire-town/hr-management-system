@@ -36,7 +36,7 @@ import {
 import { DashboardLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
-import { employeeAPI, roleAPI, settingsAPI, performanceAPI, documentAPI } from '@/lib/api-client';
+import { employeeAPI, roleAPI, performanceAPI, documentAPI } from '@/lib/api-client';
 import {
   Dialog,
   DialogContent,
@@ -96,7 +96,7 @@ interface Manager {
   role: { name: string };
 }
 
-const USER_ROLES = ['EMPLOYEE', 'MANAGER', 'HR_HEAD', 'DIRECTOR', 'INTERVIEWER'];
+const USER_ROLES = ['EMPLOYEE', 'MANAGER', 'HR_HEAD', 'DIRECTOR', 'INTERVIEWER', 'INTERN'];
 
 export default function EmployeesPage() {
   const router = useRouter();
@@ -130,7 +130,7 @@ export default function EmployeesPage() {
   const [submitting, setSubmitting] = React.useState(false);
   const [searchById, setSearchById] = React.useState('');
   const [searchingById, setSearchingById] = React.useState(false);
-  const [initializingLeave, setInitializingLeave] = React.useState(false);
+
 
   // Bulk import states
   const [showBulkImportModal, setShowBulkImportModal] = React.useState(false);
@@ -281,7 +281,7 @@ const resetFormData = React.useCallback(() => {
   const handleAddEmployee = async () => {
     // Validate roleId before submitting
     if (!formData.roleId) {
-      alert('Please select a department/role');
+      alert('Please select a role');
       return;
     }
     if (!formData.salary || parseFloat(formData.salary) <= 0) {
@@ -584,20 +584,6 @@ const resetFormData = React.useCallback(() => {
     }
   };
 
-  const handleInitializeLeaveBalances = async () => {
-    if (!confirm('This will reset leave policies AND all employee leave balances to defaults (12 sick, 12 casual, 15 earned). Continue?')) {
-      return;
-    }
-    setInitializingLeave(true);
-    try {
-      const res = await settingsAPI.resetLeaveSystem();
-      alert(res.data.message || 'Leave system reset successfully');
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to reset leave system');
-    } finally {
-      setInitializingLeave(false);
-    }
-  };
 
   const handleDownloadTemplate = async () => {
     try {
@@ -684,15 +670,7 @@ const resetFormData = React.useCallback(() => {
               <Award style={{ width: 16, height: 16, marginRight: 8 }} />
               Manage Roles
             </Button>
-            <Button
-              variant="outline"
-              onClick={handleInitializeLeaveBalances}
-              disabled={initializingLeave}
-              style={{ marginRight: 8 }}
-            >
-              <RefreshCw style={{ width: 16, height: 16, marginRight: 8, animation: initializingLeave ? 'spin 1s linear infinite' : 'none' }} />
-              {initializingLeave ? 'Resetting...' : 'Reset Leave System'}
-            </Button>
+
             <Button
               variant="outline"
               onClick={() => setShowBulkImportModal(true)}
@@ -1047,7 +1025,7 @@ const resetFormData = React.useCallback(() => {
                               >
                                 <Edit style={{ width: 16, height: 16 }} /> Edit Details
                               </button>
-                              {isDirector && (
+                              {canManageEmployees && (
                                 <button
                                   onClick={() => openPromoteModal(emp)}
                                   style={{
@@ -1208,10 +1186,10 @@ const resetFormData = React.useCallback(() => {
               />
             </div>
             <div>
-              <Label>Department *</Label>
+              <Label>Role *</Label>
               {roles.length > 0 ? (
                 <Select value={formData.roleId} onValueChange={(v) => setFormData({ ...formData, roleId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                   <SelectContent>
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
@@ -1220,7 +1198,7 @@ const resetFormData = React.useCallback(() => {
                 </Select>
               ) : (
                 <div style={{ padding: '8px', background: '#fef3cd', borderRadius: 4, fontSize: 13, color: '#856404' }}>
-                  No departments available. Please create roles first in Role Management.
+                  No roles available. Please create roles first in Role Management.
                 </div>
               )}
             </div>

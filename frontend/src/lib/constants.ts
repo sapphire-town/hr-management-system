@@ -54,18 +54,18 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: "Director's List", href: '/dashboard/directors-list', icon: Award },
         { label: 'Rewards & Badges', href: '/dashboard/rewards', icon: Trophy },
-        { label: 'Daily Reporting Config', href: '/dashboard/daily-reporting/config', icon: ClipboardList },
         { label: 'Reports', href: '/dashboard/reports', icon: FileText },
         { label: 'Hiring Requests', href: '/dashboard/hiring', icon: UserPlus },
         { label: 'Resignations', href: '/dashboard/resignation/manage', icon: UserMinus },
         { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
+        { label: 'Feedback', href: '/dashboard/feedback', icon: MessageSquare },
       ],
     },
     {
       title: 'Insights',
       items: [
         { label: 'Team Performance', href: '/dashboard/team-performance', icon: Users },
-        { label: 'Report Performance', href: '/dashboard/daily-report-performance', icon: TrendingUp },
+        { label: 'Employee Individual Performance', href: '/dashboard/daily-report-performance', icon: TrendingUp },
         { label: 'Feedback Reports', href: '/dashboard/feedback/reports', icon: BarChart3 },
       ],
     },
@@ -81,6 +81,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
         { label: 'Employees', href: '/dashboard/employees', icon: Users },
+        { label: 'Departments', href: '/dashboard/departments', icon: Building2 },
       ],
     },
     {
@@ -97,12 +98,13 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Onboarding', href: '/dashboard/onboarding', icon: UserCheck },
         { label: 'Leave Management', href: '/dashboard/leaves', icon: Calendar },
-        { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
+        { label: 'Manage Attendance', href: '/dashboard/attendance/manage', icon: ClipboardCheck },
         { label: 'Documents', href: '/dashboard/documents', icon: FileText },
         { label: 'Payroll', href: '/dashboard/payroll', icon: DollarSign },
         { label: 'Rewards & Badges', href: '/dashboard/rewards', icon: Trophy },
         { label: 'Daily Reporting Config', href: '/dashboard/daily-reporting/config', icon: ClipboardList },
         { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
+        { label: 'Feedback', href: '/dashboard/feedback', icon: MessageSquare },
       ],
     },
     {
@@ -124,8 +126,14 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       title: 'Insights',
       items: [
         { label: 'Team Performance', href: '/dashboard/team-performance', icon: Users },
-        { label: 'Report Performance', href: '/dashboard/daily-report-performance', icon: TrendingUp },
+        { label: 'Employee Individual Performance', href: '/dashboard/daily-report-performance', icon: TrendingUp },
         { label: 'Feedback Reports', href: '/dashboard/feedback/reports', icon: BarChart3 },
+      ],
+    },
+    {
+      title: 'System',
+      items: [
+        { label: 'Settings', href: '/dashboard/settings', icon: Settings },
       ],
     },
   ],
@@ -151,7 +159,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
         { label: 'Team Performance', href: '/dashboard/team-performance', icon: Users },
         { label: 'Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
         { label: 'Performance', href: '/dashboard/performance', icon: TrendingUp },
-        { label: 'Report Performance', href: '/dashboard/daily-report-performance', icon: BarChart3 },
+        { label: 'Employee Individual Performance', href: '/dashboard/daily-report-performance', icon: BarChart3 },
         { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
       ],
     },
@@ -193,6 +201,43 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Profile', href: '/dashboard/profile', icon: User },
         { label: 'Resignation', href: '/dashboard/resignation', icon: UserMinus },
+      ],
+    },
+  ],
+  INTERN: [
+    {
+      items: [
+        { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      ],
+    },
+    {
+      title: 'My Work',
+      items: [
+        { label: 'My Attendance', href: '/dashboard/attendance', icon: ClipboardCheck },
+        { label: 'Leave Management', href: '/dashboard/leaves', icon: Calendar },
+        { label: 'Daily Reports', href: '/dashboard/reports/daily', icon: FileText },
+        { label: 'My Performance', href: '/dashboard/daily-report-performance', icon: TrendingUp },
+      ],
+    },
+    {
+      title: 'Documents & Pay',
+      items: [
+        { label: 'My Documents', href: '/dashboard/documents', icon: Folder },
+        { label: 'Payslips', href: '/dashboard/payslips', icon: DollarSign },
+        { label: 'My Rewards', href: '/dashboard/rewards', icon: Trophy },
+      ],
+    },
+    {
+      title: 'Requests',
+      items: [
+        { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
+        { label: 'Feedback', href: '/dashboard/feedback', icon: MessageSquare },
+      ],
+    },
+    {
+      title: 'Account',
+      items: [
+        { label: 'Profile', href: '/dashboard/profile', icon: User },
       ],
     },
   ],
@@ -250,6 +295,7 @@ export const ROLE_LABELS: Record<string, string> = {
   MANAGER: 'Manager',
   EMPLOYEE: 'Employee',
   INTERVIEWER: 'Interviewer',
+  INTERN: 'Intern',
 };
 
 export const STATUS_COLORS = {

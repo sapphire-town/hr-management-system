@@ -17,6 +17,10 @@ import {
   Upload,
   File,
   MessageSquare,
+  Eye,
+  ArrowLeft,
+  Clock,
+  Download,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
@@ -105,6 +109,7 @@ export default function DailyReportPage() {
   const [newLink, setNewLink] = React.useState<Record<string, string>>({});
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [uploadingProofKey, setUploadingProofKey] = React.useState<string | null>(null);
+  const [viewingReport, setViewingReport] = React.useState<DailyReport | null>(null);
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
@@ -260,7 +265,7 @@ export default function DailyReportPage() {
     try {
       if (editingReport) {
         await dailyReportAPI.update(editingReport.id, {
-          reportData,
+          reportData: reportData as any,
           generalNotes,
           attachments,
         });
@@ -268,7 +273,7 @@ export default function DailyReportPage() {
       } else {
         await dailyReportAPI.submit({
           reportDate: selectedDate,
-          reportData,
+          reportData: reportData as any,
           generalNotes,
           attachments,
         });
@@ -928,6 +933,280 @@ export default function DailyReportPage() {
           </div>
         </div>
 
+        {/* Viewing Report Detail */}
+        {viewingReport && (
+          <div style={cardStyle}>
+            <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button
+                  onClick={() => setViewingReport(null)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                    backgroundColor: '#ffffff',
+                    color: '#374151',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                  }}
+                >
+                  <ArrowLeft style={{ height: '14px', width: '14px' }} />
+                  Back
+                </button>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: '#111827' }}>
+                    Report - {format(parseISO(viewingReport.reportDate), 'EEEE, MMMM d, yyyy')}
+                  </h3>
+                  <p style={{ fontSize: '12px', color: '#6b7280', margin: '2px 0 0 0' }}>
+                    Submitted {format(parseISO(viewingReport.createdAt), 'MMM d, yyyy \'at\' h:mm a')}
+                  </p>
+                </div>
+              </div>
+              <span
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '9999px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  backgroundColor: viewingReport.isVerified ? '#dcfce7' : '#fef3c7',
+                  color: viewingReport.isVerified ? '#166534' : '#92400e',
+                }}
+              >
+                {viewingReport.isVerified ? 'Verified' : 'Pending Verification'}
+              </span>
+            </div>
+
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Verification Info */}
+              {viewingReport.isVerified && (
+                <div style={{ padding: '16px', backgroundColor: '#f0fdf4', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: viewingReport.managerComment ? '8px' : '0' }}>
+                    <CheckCircle style={{ height: '18px', width: '18px', color: '#22c55e' }} />
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#166534' }}>
+                      Verified by Manager
+                    </span>
+                    {viewingReport.verifiedAt && (
+                      <span style={{ fontSize: '12px', color: '#6b7280', marginLeft: '8px' }}>
+                        on {format(parseISO(viewingReport.verifiedAt), 'MMM d, yyyy \'at\' h:mm a')}
+                      </span>
+                    )}
+                  </div>
+                  {viewingReport.managerComment && (
+                    <div style={{ marginTop: '8px', padding: '10px 12px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #dcfce7' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 500, color: '#6b7280', display: 'block', marginBottom: '4px' }}>Manager Comment:</span>
+                      <span style={{ fontSize: '14px', color: '#111827' }}>{viewingReport.managerComment}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Parameter Values */}
+              <div>
+                <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Target style={{ height: '16px', width: '16px', color: '#7c3aed' }} />
+                  Report Metrics
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {reportingParams.map((param) => {
+                    const data = normalizeParamData(viewingReport.reportData[param.key]);
+                    const percentage = param.target > 0 ? Math.min((data.value / param.target) * 100, 100) : 0;
+                    const progressColor = param.target > 0
+                      ? (data.value >= param.target ? '#22c55e' : data.value >= param.target * 0.75 ? '#f59e0b' : '#ef4444')
+                      : '#7c3aed';
+
+                    return (
+                      <div
+                        key={param.key}
+                        style={{
+                          padding: '16px',
+                          borderRadius: '12px',
+                          border: '1px solid #e5e7eb',
+                          backgroundColor: '#f9fafb',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>{param.label}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: progressColor }}>{data.value}</span>
+                            <span style={{ fontSize: '13px', color: '#6b7280' }}>/ {param.target}</span>
+                          </div>
+                        </div>
+
+                        {/* Progress Bar */}
+                        {param.target > 0 && (
+                          <div style={{ marginBottom: data.notes || (data.links && data.links.length > 0) ? '12px' : '0' }}>
+                            <div style={{ height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  width: `${percentage}%`,
+                                  height: '100%',
+                                  backgroundColor: progressColor,
+                                  borderRadius: '3px',
+                                  transition: 'width 0.3s ease',
+                                }}
+                              />
+                            </div>
+                            <div style={{ textAlign: 'right', marginTop: '2px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 600, color: progressColor }}>
+                                {Math.round(percentage)}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Notes */}
+                        {data.notes && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 500, color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                              <MessageSquare style={{ height: '12px', width: '12px' }} /> Notes
+                            </span>
+                            <p style={{ fontSize: '13px', color: '#374151', margin: 0, padding: '8px 10px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e5e7eb', whiteSpace: 'pre-wrap' }}>
+                              {data.notes}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Links */}
+                        {data.links && data.links.length > 0 && (
+                          <div>
+                            <span style={{ fontSize: '12px', fontWeight: 500, color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                              <LinkIcon style={{ height: '12px', width: '12px' }} /> Links
+                            </span>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                              {data.links.map((link, idx) => (
+                                <a
+                                  key={idx}
+                                  href={link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 10px',
+                                    backgroundColor: '#dbeafe',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    color: '#1d4ed8',
+                                    textDecoration: 'none',
+                                    maxWidth: '300px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  <LinkIcon style={{ height: '11px', width: '11px', flexShrink: 0 }} />
+                                  {link}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Per-parameter proofs */}
+                        {viewingReport.attachments && viewingReport.attachments.filter(a => a.paramKey === param.key).length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 500, color: '#6b7280', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                              <File style={{ height: '12px', width: '12px' }} /> Proof Files
+                            </span>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                              {viewingReport.attachments.filter(a => a.paramKey === param.key).map((att, aIdx) => (
+                                <a
+                                  key={aIdx}
+                                  href={dailyReportAPI.getAttachmentUrl(att.filePath?.split('/').pop() || att.fileName)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 10px',
+                                    backgroundColor: '#f5f3ff',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    color: '#7c3aed',
+                                    textDecoration: 'none',
+                                    border: '1px solid #ede9fe',
+                                  }}
+                                >
+                                  <Download style={{ height: '12px', width: '12px' }} />
+                                  {att.fileName}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* General Notes */}
+              {viewingReport.generalNotes && (
+                <div>
+                  <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MessageSquare style={{ height: '16px', width: '16px', color: '#7c3aed' }} />
+                    General Notes
+                  </h4>
+                  <div style={{ padding: '14px 16px', backgroundColor: '#f9fafb', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
+                    <p style={{ fontSize: '14px', color: '#374151', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                      {viewingReport.generalNotes}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* General Attachments (no paramKey) */}
+              {viewingReport.attachments && viewingReport.attachments.filter(a => !a.paramKey).length > 0 && (
+                <div>
+                  <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <File style={{ height: '16px', width: '16px', color: '#7c3aed' }} />
+                    Attachments
+                  </h4>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {viewingReport.attachments.filter(a => !a.paramKey).map((att, idx) => (
+                      <a
+                        key={idx}
+                        href={dailyReportAPI.getAttachmentUrl(att.filePath?.split('/').pop() || att.fileName)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '10px 14px',
+                          backgroundColor: '#f0fdf4',
+                          borderRadius: '8px',
+                          border: '1px solid #bbf7d0',
+                          fontSize: '13px',
+                          color: '#166534',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <Download style={{ height: '14px', width: '14px' }} />
+                        {att.fileName}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Submission Time */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 16px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                <Clock style={{ height: '14px', width: '14px', color: '#6b7280' }} />
+                <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                  Submitted on {format(parseISO(viewingReport.createdAt), 'EEEE, MMMM d, yyyy \'at\' h:mm a')}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Report History */}
         <div style={cardStyle}>
           <div
@@ -1019,41 +1298,54 @@ export default function DailyReportPage() {
                         );
                       })}
                       <td style={{ padding: '16px' }}>
-                        {!report.isVerified && (
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                              onClick={() => handleEdit(report)}
-                              style={{
-                                padding: '6px',
-                                borderRadius: '6px',
-                                border: 'none',
-                                backgroundColor: '#dbeafe',
-                                color: '#1d4ed8',
-                                cursor: 'pointer',
-                              }}
-                              title="Edit"
-                            >
-                              <Edit style={{ height: '14px', width: '14px' }} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(report.id)}
-                              style={{
-                                padding: '6px',
-                                borderRadius: '6px',
-                                border: 'none',
-                                backgroundColor: '#fef2f2',
-                                color: '#dc2626',
-                                cursor: 'pointer',
-                              }}
-                              title="Delete"
-                            >
-                              <Trash2 style={{ height: '14px', width: '14px' }} />
-                            </button>
-                          </div>
-                        )}
-                        {report.isVerified && (
-                          <span style={{ fontSize: '12px', color: '#6b7280' }}>-</span>
-                        )}
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => setViewingReport(report)}
+                            style={{
+                              padding: '6px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              backgroundColor: '#f5f3ff',
+                              color: '#7c3aed',
+                              cursor: 'pointer',
+                            }}
+                            title="View Details"
+                          >
+                            <Eye style={{ height: '14px', width: '14px' }} />
+                          </button>
+                          {!report.isVerified && (
+                            <>
+                              <button
+                                onClick={() => handleEdit(report)}
+                                style={{
+                                  padding: '6px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  backgroundColor: '#dbeafe',
+                                  color: '#1d4ed8',
+                                  cursor: 'pointer',
+                                }}
+                                title="Edit"
+                              >
+                                <Edit style={{ height: '14px', width: '14px' }} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(report.id)}
+                                style={{
+                                  padding: '6px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  backgroundColor: '#fef2f2',
+                                  color: '#dc2626',
+                                  cursor: 'pointer',
+                                }}
+                                title="Delete"
+                              >
+                                <Trash2 style={{ height: '14px', width: '14px' }} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

@@ -167,9 +167,13 @@ export default function DailyReportPerformancePage() {
     exportDailyReportPerformanceToPDF(perf, periodLabel);
   };
 
+  // Filter out text-type parameters (not measurable) - only show numeric params with targets
+  const getNumericParams = (perf: EmployeePerformance) =>
+    perf.parameters.filter((p) => p.paramType !== 'text');
+
   // Prepare bar chart data for target vs actual
   const getBarChartData = (perf: EmployeePerformance) => {
-    return perf.parameters.map((p) => ({
+    return getNumericParams(perf).map((p) => ({
       name: p.paramLabel,
       Actual: p.totalActual,
       Target: p.totalTarget,
@@ -179,12 +183,13 @@ export default function DailyReportPerformancePage() {
   // Prepare line chart data for trend
   const getTrendChartData = (perf: EmployeePerformance) => {
     if (!perf.timeSeries || perf.timeSeries.length === 0) return [];
-    const paramKeys = perf.parameters.map((p) => p.paramKey);
+    const numericParams = getNumericParams(perf);
+    const paramKeys = numericParams.map((p) => p.paramKey);
     return perf.timeSeries.map((bucket) => {
       const row: any = { name: bucket.bucketLabel };
       paramKeys.forEach((key) => {
         const paramData = bucket.parameters[key];
-        row[perf.parameters.find((p) => p.paramKey === key)?.paramLabel || key] =
+        row[numericParams.find((p) => p.paramKey === key)?.paramLabel || key] =
           paramData ? Math.round(paramData.achievementPct) : 0;
       });
       return row;
@@ -197,7 +202,7 @@ export default function DailyReportPerformancePage() {
 
   return (
     <DashboardLayout
-      title="Daily Report Performance"
+      title="Employee Individual Performance"
       description="Track target vs actual performance from daily reports"
       actions={
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -439,7 +444,7 @@ export default function DailyReportPerformancePage() {
           </div>
 
           {/* Target vs Actual Bar Chart */}
-          {activePerfView.parameters.length > 0 && (
+          {getNumericParams(activePerfView).length > 0 && (
             <div
               style={{
                 backgroundColor: '#ffffff',
@@ -465,7 +470,7 @@ export default function DailyReportPerformancePage() {
           )}
 
           {/* Parameter Details Table */}
-          {activePerfView.parameters.length > 0 && (
+          {getNumericParams(activePerfView).length > 0 && (
             <div
               style={{
                 backgroundColor: '#ffffff',
@@ -503,7 +508,7 @@ export default function DailyReportPerformancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activePerfView.parameters.map((p, idx) => (
+                  {getNumericParams(activePerfView).map((p, idx) => (
                     <tr
                       key={p.paramKey}
                       style={{
@@ -573,7 +578,7 @@ export default function DailyReportPerformancePage() {
               <div style={{ height: '320px' }}>
                 <LineChart
                   data={getTrendChartData(activePerfView)}
-                  dataKey={activePerfView.parameters.map((p) => p.paramLabel)}
+                  dataKey={getNumericParams(activePerfView).map((p) => p.paramLabel)}
                   xAxisKey="name"
                   colors={['#7c3aed', '#22c55e', '#eab308', '#ef4444', '#3b82f6', '#ec4899']}
                   showLegend

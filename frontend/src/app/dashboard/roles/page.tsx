@@ -91,6 +91,7 @@ const PARAM_TYPES = [
   { value: 'number', label: 'Number' },
   { value: 'percentage', label: 'Percentage' },
   { value: 'currency', label: 'Currency' },
+  { value: 'text', label: 'Text' },
 ];
 
 const CHART_TYPES: { value: ChartConfig['type']; label: string }[] = [
@@ -188,6 +189,8 @@ export default function RolesPage() {
   const [newChart, setNewChart] = React.useState<ChartConfig>({ id: '', title: '', type: 'bar', metrics: [], color: CHART_COLORS[0] });
 
   const isDirector = user?.role === 'DIRECTOR';
+  const isHRHead = user?.role === 'HR_HEAD';
+  const canManageRoles = isDirector || isHRHead;
 
   const fetchData = React.useCallback(async () => {
     try {
@@ -569,7 +572,7 @@ export default function RolesPage() {
                 <tr key={param.key} style={{ borderTop: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '10px 14px', fontSize: 13, color: '#6b7280', fontFamily: 'monospace' }}>{param.key}</td>
                   <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500, color: '#1e293b' }}>{param.label}</td>
-                  <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#7c3aed' }}>{param.target}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: param.type === 'text' ? '#9ca3af' : '#7c3aed' }}>{param.type === 'text' ? '—' : param.target}</td>
                   <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                     <span style={{ ...badgeBase, background: '#ede9fe', color: '#7c3aed' }}>
                       {param.type}
@@ -630,25 +633,27 @@ export default function RolesPage() {
               />
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: '#475569', display: 'block', marginBottom: 4 }}>Daily Target *</label>
-              <input
-                type="number"
-                min="0"
-                value={newParam.target}
-                onChange={(e) => setNewParam({ ...newParam, target: parseInt(e.target.value) || 0 })}
-                style={inputStyle}
-              />
-            </div>
-            <div>
               <label style={{ fontSize: 12, fontWeight: 500, color: '#475569', display: 'block', marginBottom: 4 }}>Type</label>
               <select
                 value={newParam.type}
-                onChange={(e) => setNewParam({ ...newParam, type: e.target.value })}
+                onChange={(e) => setNewParam({ ...newParam, type: e.target.value, ...(e.target.value === 'text' ? { target: 0 } : {}) })}
                 style={selectStyle}
               >
                 {PARAM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
+            {newParam.type !== 'text' && (
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 500, color: '#475569', display: 'block', marginBottom: 4 }}>Daily Target *</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newParam.target}
+                  onChange={(e) => setNewParam({ ...newParam, target: parseInt(e.target.value) || 0 })}
+                  style={inputStyle}
+                />
+              </div>
+            )}
           </div>
           {/* Allow Proof Upload toggle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
@@ -853,7 +858,7 @@ export default function RolesPage() {
                 Metrics (select parameters to include) *
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {formData.dailyReportingParams.map(param => (
+                {formData.dailyReportingParams.filter(p => p.type !== 'text').map(param => (
                   <label
                     key={param.key}
                     style={{
@@ -975,7 +980,7 @@ export default function RolesPage() {
       title="Role Management"
       description="Manage organizational roles and staffing requirements"
       actions={
-        isDirector ? (
+        canManageRoles ? (
           <>
             <Button
               variant="outline"
@@ -1099,7 +1104,7 @@ export default function RolesPage() {
                     <th style={thStyle}>Charts</th>
                     <th style={thStyle}>Active</th>
                     <th style={thStyle}>Status</th>
-                    {isDirector && (
+                    {canManageRoles && (
                       <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
                     )}
                   </tr>
@@ -1173,7 +1178,7 @@ export default function RolesPage() {
                           </span>
                         </td>
                         <td style={{ padding: '16px 20px', textAlign: 'center' }}>
-                          {isDirector ? (
+                          {canManageRoles ? (
                             <button
                               onClick={() => handleToggleActive(role)}
                               style={{
@@ -1216,7 +1221,7 @@ export default function RolesPage() {
                             <span style={{ ...badgeBase, background: '#dcfce7', color: '#166534' }}>Optimal</span>
                           )}
                         </td>
-                        {isDirector && (
+                        {canManageRoles && (
                           <td style={{ padding: '16px 20px', textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                               <button

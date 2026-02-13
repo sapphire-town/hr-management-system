@@ -40,7 +40,7 @@ interface DailyReport {
   id: string;
   employeeId: string;
   reportDate: string;
-  reportData: Record<string, number>;
+  reportData: Record<string, number | string>;
   generalNotes: string | null;
   attachments: Attachment[];
   isVerified: boolean;
@@ -76,7 +76,7 @@ export default function DailyReportPage() {
   const [todayReport, setTodayReport] = React.useState<DailyReport | null>(null);
   const [reports, setReports] = React.useState<DailyReport[]>([]);
   const [stats, setStats] = React.useState<ReportStats | null>(null);
-  const [reportData, setReportData] = React.useState<Record<string, number>>({});
+  const [reportData, setReportData] = React.useState<Record<string, number | string>>({});
   const [generalNotes, setGeneralNotes] = React.useState('');
   const [attachments, setAttachments] = React.useState<Attachment[]>([]);
   const [uploadingFiles, setUploadingFiles] = React.useState(false);
@@ -95,9 +95,9 @@ export default function DailyReportPage() {
       setRoleName(paramsRes.data.roleName || '');
 
       // Initialize report data with zeros
-      const initialData: Record<string, number> = {};
+      const initialData: Record<string, number | string> = {};
       (paramsRes.data.parameters || []).forEach((param: ReportingParam) => {
-        initialData[param.key] = 0;
+        initialData[param.key] = param.type === 'text' ? '' : 0;
       });
       setReportData(initialData);
 
@@ -134,9 +134,13 @@ export default function DailyReportPage() {
     fetchData();
   }, [fetchData]);
 
-  const handleInputChange = (key: string, value: string) => {
-    const numValue = parseInt(value) || 0;
-    setReportData((prev) => ({ ...prev, [key]: numValue }));
+  const handleInputChange = (key: string, value: string, type?: string) => {
+    if (type === 'text') {
+      setReportData((prev) => ({ ...prev, [key]: value }));
+    } else {
+      const numValue = parseInt(value) || 0;
+      setReportData((prev) => ({ ...prev, [key]: numValue }));
+    }
   };
 
   const handleSubmit = async () => {
@@ -155,9 +159,9 @@ export default function DailyReportPage() {
       }
       await fetchData();
       // Reset form after submission
-      const initialData: Record<string, number> = {};
+      const initialData: Record<string, number | string> = {};
       reportingParams.forEach((param) => {
-        initialData[param.key] = 0;
+        initialData[param.key] = param.type === 'text' ? '' : 0;
       });
       setReportData(initialData);
       setGeneralNotes('');
@@ -197,9 +201,9 @@ export default function DailyReportPage() {
       setGeneralNotes(todayReport.generalNotes || '');
       setAttachments(todayReport.attachments || []);
     } else {
-      const initialData: Record<string, number> = {};
+      const initialData: Record<string, number | string> = {};
       reportingParams.forEach((param) => {
-        initialData[param.key] = 0;
+        initialData[param.key] = param.type === 'text' ? '' : 0;
       });
       setReportData(initialData);
       setGeneralNotes('');
@@ -359,7 +363,7 @@ export default function DailyReportPage() {
           </div>
           <div style={{ padding: '20px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
-              {reportingParams.map((param) => (
+              {reportingParams.filter((p) => p.type !== 'text').map((param) => (
                 <div
                   key={param.key}
                   style={{
@@ -467,9 +471,11 @@ export default function DailyReportPage() {
           <div style={{ padding: '20px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
               {reportingParams.map((param) => {
-                const value = reportData[param.key] || 0;
-                const percentage = Math.min((value / param.target) * 100, 100);
-                const progressColor = getProgressColor(value, param.target);
+                const isTextParam = param.type === 'text';
+                const value = reportData[param.key] || (isTextParam ? '' : 0);
+                const numValue = typeof value === 'number' ? value : 0;
+                const percentage = !isTextParam && param.target > 0 ? Math.min((numValue / param.target) * 100, 100) : 0;
+                const progressColor = !isTextParam ? getProgressColor(numValue, param.target) : '#6b7280';
 
                 return (
                   <div
@@ -485,49 +491,77 @@ export default function DailyReportPage() {
                       <label style={{ fontSize: '14px', fontWeight: 600, color: '#111827' }}>
                         {param.label}
                       </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Target style={{ height: '14px', width: '14px', color: '#6b7280' }} />
-                        <span style={{ fontSize: '12px', color: '#6b7280' }}>Target: {param.target}</span>
-                      </div>
+                      {!isTextParam && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Target style={{ height: '14px', width: '14px', color: '#6b7280' }} />
+                          <span style={{ fontSize: '12px', color: '#6b7280' }}>Target: {param.target}</span>
+                        </div>
+                      )}
+                      {isTextParam && (
+                        <span style={{ fontSize: '11px', color: '#9ca3af', padding: '2px 8px', borderRadius: '9999px', backgroundColor: '#f3f4f6' }}>Text</span>
+                      )}
                     </div>
-                    <input
-                      type="number"
-                      min="0"
-                      value={value}
-                      onChange={(e) => handleInputChange(param.key, e.target.value)}
-                      disabled={todayReport?.isVerified && isTodaySelected && !editingReport}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        borderRadius: '8px',
-                        border: '1px solid #e5e7eb',
-                        fontSize: '18px',
-                        fontWeight: 600,
-                        color: '#111827',
-                        backgroundColor: todayReport?.isVerified && isTodaySelected && !editingReport ? '#f3f4f6' : '#ffffff',
-                        textAlign: 'center',
-                      }}
-                    />
-                    {/* Progress bar */}
-                    <div style={{ marginTop: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '12px', color: '#6b7280' }}>Progress</span>
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: progressColor }}>
-                          {Math.round(percentage)}%
-                        </span>
-                      </div>
-                      <div style={{ height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div
+                    {isTextParam ? (
+                      <textarea
+                        value={String(value)}
+                        onChange={(e) => handleInputChange(param.key, e.target.value, 'text')}
+                        disabled={todayReport?.isVerified && isTodaySelected && !editingReport}
+                        placeholder={`Enter ${param.label.toLowerCase()}...`}
+                        rows={3}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          borderRadius: '8px',
+                          border: '1px solid #e5e7eb',
+                          fontSize: '14px',
+                          color: '#111827',
+                          backgroundColor: todayReport?.isVerified && isTodaySelected && !editingReport ? '#f3f4f6' : '#ffffff',
+                          resize: 'vertical',
+                          fontFamily: 'inherit',
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <input
+                          type="number"
+                          min="0"
+                          value={numValue}
+                          onChange={(e) => handleInputChange(param.key, e.target.value)}
+                          disabled={todayReport?.isVerified && isTodaySelected && !editingReport}
                           style={{
-                            width: `${percentage}%`,
-                            height: '100%',
-                            backgroundColor: progressColor,
-                            borderRadius: '3px',
-                            transition: 'width 0.3s ease',
+                            width: '100%',
+                            padding: '12px 16px',
+                            borderRadius: '8px',
+                            border: '1px solid #e5e7eb',
+                            fontSize: '18px',
+                            fontWeight: 600,
+                            color: '#111827',
+                            backgroundColor: todayReport?.isVerified && isTodaySelected && !editingReport ? '#f3f4f6' : '#ffffff',
+                            textAlign: 'center',
                           }}
                         />
-                      </div>
-                    </div>
+                        {/* Progress bar */}
+                        <div style={{ marginTop: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '12px', color: '#6b7280' }}>Progress</span>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: progressColor }}>
+                              {Math.round(percentage)}%
+                            </span>
+                          </div>
+                          <div style={{ height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div
+                              style={{
+                                width: `${percentage}%`,
+                                height: '100%',
+                                backgroundColor: progressColor,
+                                borderRadius: '3px',
+                                transition: 'width 0.3s ease',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
 
                     {/* Per-parameter proof upload */}
                     {param.allowProof && (
@@ -889,18 +923,29 @@ export default function DailyReportPage() {
                         </span>
                       </td>
                       {reportingParams.map((param) => {
-                        const value = report.reportData[param.key] || 0;
-                        const isAboveTarget = value >= param.target;
+                        const value = report.reportData[param.key];
+                        if (param.type === 'text') {
+                          const textVal = typeof value === 'string' ? value : (value ? String(value) : '—');
+                          return (
+                            <td key={param.key} style={{ padding: '16px', maxWidth: '200px' }}>
+                              <span style={{ fontSize: '13px', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                                {textVal || '—'}
+                              </span>
+                            </td>
+                          );
+                        }
+                        const numVal = typeof value === 'number' ? value : 0;
+                        const isAboveTarget = numVal >= param.target;
                         return (
                           <td key={param.key} style={{ padding: '16px' }}>
                             <span
                               style={{
                                 fontSize: '14px',
                                 fontWeight: 600,
-                                color: isAboveTarget ? '#22c55e' : value >= param.target * 0.75 ? '#f59e0b' : '#ef4444',
+                                color: isAboveTarget ? '#22c55e' : numVal >= param.target * 0.75 ? '#f59e0b' : '#ef4444',
                               }}
                             >
-                              {value}
+                              {numVal}
                               <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: 400 }}>
                                 /{param.target}
                               </span>

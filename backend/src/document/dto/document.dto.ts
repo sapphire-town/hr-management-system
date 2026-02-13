@@ -45,6 +45,21 @@ export class ReleaseDocumentDto {
   description?: string;
 }
 
+export class BulkReleaseDocumentDto {
+  @ApiProperty({ description: 'Comma-separated employee IDs' })
+  @IsString()
+  employeeIds: string;
+
+  @ApiProperty({ description: 'Document type', example: 'offer_letter' })
+  @IsString()
+  documentType: string;
+
+  @ApiPropertyOptional({ description: 'Document description' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
 export class DocumentFilterDto {
   @ApiPropertyOptional({ description: 'Filter by document type' })
   @IsOptional()

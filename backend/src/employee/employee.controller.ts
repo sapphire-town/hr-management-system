@@ -186,7 +186,7 @@ export class EmployeeController {
   }
 
   @Patch(':id/promote')
-  @Roles(UserRole.DIRECTOR)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Promote employee to new role' })
   async promote(@Param('id') id: string, @Body() dto: PromoteEmployeeDto) {
     return this.employeeService.promote(id, dto);

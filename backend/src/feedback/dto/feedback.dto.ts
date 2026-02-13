@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsUUID, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsUUID, IsEnum, IsArray, ArrayMinSize } from 'class-validator';
 
 export enum FeedbackSubject {
   MANAGER = 'Manager',
@@ -34,6 +34,22 @@ export class HRFeedbackDto {
   @ApiProperty()
   @IsUUID()
   toId: string;
+
+  @ApiProperty()
+  @IsString()
+  subject: string;
+
+  @ApiProperty()
+  @IsString()
+  content: string;
+}
+
+export class BulkHRFeedbackDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  toIds: string[];
 
   @ApiProperty()
   @IsString()

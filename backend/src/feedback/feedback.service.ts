@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { CreateFeedbackDto, HRFeedbackDto, FeedbackFilterDto } from './dto/feedback.dto';
+import { CreateFeedbackDto, HRFeedbackDto, BulkHRFeedbackDto, FeedbackFilterDto } from './dto/feedback.dto';
 
 @Injectable()
 export class FeedbackService {
@@ -55,6 +55,48 @@ export class FeedbackService {
         },
       },
     });
+  }
+
+  // HR sends feedback to multiple employees at once
+  async createBulkHRFeedback(fromId: string, dto: BulkHRFeedbackDto) {
+    // Verify all employees exist
+    const employees = await this.prisma.employee.findMany({
+      where: { id: { in: dto.toIds } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+
+    if (employees.length === 0) {
+      throw new NotFoundException('No valid employees found');
+    }
+
+    const validIds = employees.map((e) => e.id);
+    const invalidIds = dto.toIds.filter((id) => !validIds.includes(id));
+
+    // Create feedback for each valid employee
+    const feedbacks = await Promise.all(
+      validIds.map((toId) =>
+        this.prisma.feedback.create({
+          data: {
+            fromId,
+            toId,
+            subject: dto.subject,
+            content: dto.content,
+            isConfidential: false,
+          },
+          include: {
+            from: { select: { firstName: true, lastName: true } },
+            to: { select: { firstName: true, lastName: true } },
+          },
+        }),
+      ),
+    );
+
+    return {
+      sent: feedbacks.length,
+      failed: invalidIds.length,
+      feedbacks,
+      ...(invalidIds.length > 0 && { invalidEmployeeIds: invalidIds }),
+    };
   }
 
   // Get all feedback (HR view)

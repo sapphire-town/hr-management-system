@@ -15,7 +15,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UserRole } from '@prisma/client';
 import { FeedbackService } from './feedback.service';
-import { CreateFeedbackDto, HRFeedbackDto, FeedbackFilterDto } from './dto/feedback.dto';
+import { CreateFeedbackDto, HRFeedbackDto, BulkHRFeedbackDto, FeedbackFilterDto } from './dto/feedback.dto';
 
 interface JwtPayload {
   sub: string;
@@ -56,6 +56,20 @@ export class FeedbackController {
       throw new Error('Employee ID not found');
     }
     return this.feedbackService.createHRFeedback(user.employeeId, dto);
+  }
+
+  // HR sends feedback to multiple employees at once
+  @Post('hr/bulk')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Send feedback to multiple employees (HR/Director)' })
+  async createBulkHRFeedback(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: BulkHRFeedbackDto,
+  ) {
+    if (!user.employeeId) {
+      throw new Error('Employee ID not found');
+    }
+    return this.feedbackService.createBulkHRFeedback(user.employeeId, dto);
   }
 
   // Get all feedback (HR view)

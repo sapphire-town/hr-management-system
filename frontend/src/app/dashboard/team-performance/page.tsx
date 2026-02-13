@@ -206,6 +206,7 @@ export default function TeamPerformancePage() {
   }, [fetchData]);
 
   // When Director/HR clicks a team to drill down
+  const [loadingTeam, setLoadingTeam] = useState(false);
   const handleTeamSelect = async (managerId: string) => {
     if (selectedTeamId === managerId) {
       setSelectedTeamId(null);
@@ -213,25 +214,25 @@ export default function TeamPerformancePage() {
       return;
     }
     setSelectedTeamId(managerId);
+    setLoadingTeam(true);
     try {
-      const res = await performanceAPI.getEmployeePerformance(managerId, { period });
-      // Use the team dashboard for that manager
-      const dashRes = await performanceAPI.getTeamDashboard({ period });
-      // Actually we need the specific manager's team - but the endpoint uses current user.
-      // We'll use getAllTeams data + getEmployeePerformance for detail
-      setSelectedTeamData(null); // Will show team summary from allTeams
+      const res = await performanceAPI.getManagerTeamDashboard(managerId, { period });
+      setSelectedTeamData(res.data);
     } catch {
-      // Silently fail
+      setSelectedTeamData(null);
+    } finally {
+      setLoadingTeam(false);
     }
   };
 
   const handleExport = () => {
-    const data = teamDashboard?.members || [];
+    const activeDashboard = selectedTeamData || teamDashboard;
+    const data = activeDashboard?.members || [];
     if (data.length === 0) return;
 
     exportToExcel({
       filename: `team_performance_${period}_${new Date().toISOString().split('T')[0]}`,
-      title: `Team Performance - ${teamDashboard?.managerName || 'All Teams'}`,
+      title: `Team Performance - ${activeDashboard?.managerName || 'All Teams'}`,
       columns: [
         { key: 'employeeName', header: 'Employee', width: 20 },
         { key: 'role', header: 'Role', width: 15 },
@@ -248,12 +249,13 @@ export default function TeamPerformancePage() {
   };
 
   const handleExportPDF = () => {
-    const data = teamDashboard?.members || [];
+    const activeDashboard = selectedTeamData || teamDashboard;
+    const data = activeDashboard?.members || [];
     if (data.length === 0) return;
 
     exportToPDF({
       filename: `team_performance_${period}_${new Date().toISOString().split('T')[0]}`,
-      title: `Team Performance Report - ${teamDashboard?.managerName || ''}`,
+      title: `Team Performance Report - ${activeDashboard?.managerName || ''}`,
       columns: [
         { key: 'employeeName', header: 'Employee', width: 20 },
         { key: 'role', header: 'Role', width: 15 },
@@ -304,7 +306,7 @@ export default function TeamPerformancePage() {
               ))}
             </select>
 
-            {teamDashboard && (
+            {(selectedTeamData || teamDashboard) && (
               <>
                 <Button variant="outline" size="sm" onClick={handleExport}>
                   <Download style={{ width: '14px', height: '14px', marginRight: '6px' }} />
@@ -335,8 +337,58 @@ export default function TeamPerformancePage() {
               />
             )}
 
-            {/* Own Team Dashboard (Manager or Director/HR with team) */}
-            {teamDashboard && (
+            {/* Selected Manager's Team Dashboard (Director/HR drill-down) */}
+            {isDirectorOrHR && selectedTeamId && (
+              loadingTeam ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0', color: '#9ca3af' }}>
+                  <Loader2 style={{ width: '20px', height: '20px', marginRight: '8px', animation: 'spin 1s linear infinite' }} />
+                  Loading team details...
+                </div>
+              ) : selectedTeamData ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                    <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: 0 }}>
+                      {selectedTeamData.managerName}&apos;s Team
+                    </h2>
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      backgroundColor: '#ede9fe',
+                      color: '#7c3aed',
+                    }}>
+                      {selectedTeamData.managerRole}
+                    </span>
+                    <button
+                      onClick={() => { setSelectedTeamId(null); setSelectedTeamData(null); }}
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: '13px',
+                        color: '#6b7280',
+                        background: 'none',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <TeamDashboardView dashboard={selectedTeamData} />
+                </div>
+              ) : (
+                <div style={{ ...cardStyle, textAlign: 'center', padding: '40px', marginBottom: '24px' }}>
+                  <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
+                    No detailed team data available for this manager.
+                  </p>
+                </div>
+              )
+            )}
+
+            {/* Own Team Dashboard (Manager view, or Director/HR without selection) */}
+            {teamDashboard && !selectedTeamId && (
               <TeamDashboardView dashboard={teamDashboard} />
             )}
 
@@ -374,9 +426,12 @@ function AllTeamsOverview({
 }) {
   return (
     <div style={{ ...cardStyle, marginBottom: '24px' }}>
-      <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827', margin: '0 0 16px 0' }}>
-        All Teams Overview ({teams.length} teams)
-      </h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827', margin: 0 }}>
+          All Teams Overview ({teams.length} teams)
+        </h3>
+        <span style={{ fontSize: '12px', color: '#9ca3af' }}>Click a manager to view team details</span>
+      </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
           <thead>
@@ -406,7 +461,16 @@ function AllTeamsOverview({
                 onMouseEnter={(e) => { if (selectedTeamId !== team.managerId) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
                 onMouseLeave={(e) => { if (selectedTeamId !== team.managerId) e.currentTarget.style.backgroundColor = idx % 2 === 0 ? '#fff' : '#fafafa'; }}
               >
-                <td style={{ ...tdStyle, fontWeight: 500, color: '#111827' }}>{team.managerName}</td>
+                <td style={{ ...tdStyle, fontWeight: 500 }}>
+                  <span style={{
+                    color: selectedTeamId === team.managerId ? '#7c3aed' : '#111827',
+                    textDecoration: selectedTeamId === team.managerId ? 'underline' : 'none',
+                    cursor: 'pointer',
+                  }}>
+                    {team.managerName}
+                    {selectedTeamId === team.managerId && ' ▾'}
+                  </span>
+                </td>
                 <td style={tdStyle}>{team.managerRole}</td>
                 <td style={{ ...tdStyle, fontWeight: 600 }}>{team.teamSize}</td>
                 <td style={tdStyle}><ScoreBadge score={team.averageScore} /></td>

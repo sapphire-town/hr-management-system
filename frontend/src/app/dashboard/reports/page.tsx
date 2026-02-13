@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { useAuthStore } from '@/store/auth-store';
-import { apiClient } from '@/lib/api-client';
+import apiClient from '@/lib/api-client';
 import { Card } from '@/components/ui/card';
 
 interface EmployeeMetrics {

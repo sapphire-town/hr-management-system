@@ -172,6 +172,8 @@ export const performanceAPI = {
     apiClient.get('/performance/team/dashboard', { params }),
   getAllTeams: (params?: { period?: string }) =>
     apiClient.get('/performance/team/all', { params }),
+  getManagerTeamDashboard: (managerId: string, params?: { period?: string }) =>
+    apiClient.get(`/performance/team/dashboard/${managerId}`, { params }),
 
   // Director/HR endpoints
   getAllEmployeesPerformance: (params?: { period?: string }) =>
@@ -206,11 +208,32 @@ export const documentAPI = {
   release: (data: FormData) => apiClient.post('/documents/release', data, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  bulkRelease: (data: FormData) => apiClient.post('/documents/release/bulk', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
   getPendingVerifications: (params?: any) => apiClient.get('/documents/verification/pending', { params }),
   viewVerificationDocument: (id: string) => apiClient.get(`/documents/verification/${id}/view`, { responseType: 'blob' }),
   verify: (id: string) => apiClient.patch(`/documents/verification/${id}/verify`, { status: 'VERIFIED' }),
   reject: (id: string, rejectionReason: string) =>
     apiClient.patch(`/documents/verification/${id}/verify`, { status: 'REJECTED', rejectionReason }),
+
+  // Document Templates
+  getPlaceholders: () => apiClient.get('/documents/templates/placeholders'),
+  getTemplates: () => apiClient.get('/documents/templates'),
+  uploadTemplate: (file: File, data: { name: string; documentType: string; description?: string }) => {
+    const formData = new FormData();
+    formData.append('template', file);
+    formData.append('name', data.name);
+    formData.append('documentType', data.documentType);
+    if (data.description) formData.append('description', data.description);
+    return apiClient.post('/documents/templates', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  deleteTemplate: (id: string) => apiClient.delete(`/documents/templates/${id}`),
+  downloadTemplate: (id: string) => apiClient.get(`/documents/templates/${id}/download`, { responseType: 'blob' }),
+  generateDocuments: (templateId: string, employeeIds: string[]) =>
+    apiClient.post(`/documents/templates/${templateId}/generate`, { employeeIds }),
 };
 
 export const ticketAPI = {
@@ -232,6 +255,8 @@ export const feedbackAPI = {
   submit: (data: any) => apiClient.post('/feedback', data),
   submitHRFeedback: (data: { toId: string; subject: string; content: string }) =>
     apiClient.post('/feedback/hr', data),
+  submitBulkHRFeedback: (data: { toIds: string[]; subject: string; content: string }) =>
+    apiClient.post('/feedback/hr/bulk', data),
   getAll: (params?: { subject?: string }) => apiClient.get('/feedback', { params }),
   getStatistics: () => apiClient.get('/feedback/statistics'),
   getMySubmitted: () => apiClient.get('/feedback/my/submitted'),
@@ -409,6 +434,15 @@ export const recruitmentAPI = {
     apiClient.post(`/recruitment/drives/${driveId}/students/bulk`, { students }),
   getStudents: (driveId: string) => apiClient.get(`/recruitment/drives/${driveId}/students`),
   deleteStudent: (studentId: string) => apiClient.delete(`/recruitment/students/${studentId}`),
+  importStudents: (driveId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post(`/recruitment/drives/${driveId}/students/import`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  downloadStudentTemplate: () =>
+    apiClient.get('/recruitment/students/import-template', { responseType: 'blob' }),
 
   // Evaluations
   evaluateStudent: (studentId: string, round: number, data: { status: string; comments?: string }) =>
@@ -445,6 +479,26 @@ export const settingsAPI = {
   updateNotifications: (data: { emailNotifications?: boolean; inAppNotifications?: boolean; reminderDaysBefore?: number }) =>
     apiClient.patch('/settings/notifications', data),
   resetLeaveSystem: () => apiClient.post('/settings/reset-leave-system'),
+  uploadLogo: (file: File) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    return apiClient.post('/settings/logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  updatePayslipTemplate: (data: {
+    companyAddress?: string;
+    registrationNumber?: string;
+    signatoryName?: string;
+    signatoryTitle?: string;
+    footerText?: string;
+    primaryColor?: string;
+  }) => apiClient.patch('/settings/payslip-template', data),
+  getLogoUrl: (logoPath: string) => {
+    const filename = logoPath.split('/').pop();
+    return `${apiClient.defaults.baseURL}/settings/logo/${filename}`;
+  },
+  getPayslipTemplate: () => apiClient.get('/settings/payslip-template'),
 };
 
 export const targetAPI = {
@@ -477,12 +531,8 @@ export const targetAPI = {
   permanentDelete: (id: string) => apiClient.delete(`/targets/${id}/permanent`),
 };
 
-// Types for enhanced daily reports
-interface ParamData {
-  value: number;
-  notes?: string;
-  links?: string[];
-}
+// Types for daily report data values (number for metrics, string for text params)
+type ParamData = number | string;
 
 interface Attachment {
   fileName: string;

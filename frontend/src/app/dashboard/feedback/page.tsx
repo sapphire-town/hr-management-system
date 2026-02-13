@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   MessageSquare,
   Send,
@@ -18,7 +19,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
-import { feedbackAPI, employeeAPI } from '@/lib/api-client';
+import { feedbackAPI, employeeAPI, dailyReportAPI } from '@/lib/api-client';
 
 interface Feedback {
   id: string;
@@ -52,6 +53,22 @@ interface Statistics {
   confidentialCount: number;
 }
 
+interface EmployeePerformance {
+  employeeId: string;
+  employeeName: string;
+  roleName: string;
+  overallAchievement: number;
+  totalReports: number;
+  parameters: {
+    paramKey: string;
+    paramLabel: string;
+    paramType: string;
+    totalTarget: number;
+    totalActual: number;
+    achievementPct: number;
+  }[];
+}
+
 const FEEDBACK_SUBJECTS = [
   'Manager',
   'Company',
@@ -72,6 +89,8 @@ const subjectConfig: Record<string, { icon: React.ReactNode; color: string; labe
 
 export default function FeedbackPage() {
   const { user } = useAuthStore();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = React.useState<'received' | 'send' | 'my' | 'submit' | 'submitted'>('my');
   const [feedbacks, setFeedbacks] = React.useState<Feedback[]>([]);
   const [myReceivedFeedbacks, setMyReceivedFeedbacks] = React.useState<Feedback[]>([]);
@@ -85,10 +104,14 @@ export default function FeedbackPage() {
   const [submitSuccess, setSubmitSuccess] = React.useState(false);
 
   // HR Send feedback form state
-  const [selectedEmployee, setSelectedEmployee] = React.useState('');
+  const [selectedEmployees, setSelectedEmployees] = React.useState<string[]>([]);
+  const [employeeSearchTerm, setEmployeeSearchTerm] = React.useState('');
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = React.useState(false);
   const [feedbackSubject, setFeedbackSubject] = React.useState('');
   const [feedbackContent, setFeedbackContent] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  const [sendSuccess, setSendSuccess] = React.useState<string | null>(null);
+  const employeePickerRef = React.useRef<HTMLDivElement>(null);
 
   // Employee submit feedback form state
   const [employeeFeedbackSubject, setEmployeeFeedbackSubject] = React.useState('');
@@ -96,18 +119,28 @@ export default function FeedbackPage() {
   const [isConfidential, setIsConfidential] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
 
+  // Performance data for selected employee (Director feature)
+  const [employeePerformance, setEmployeePerformance] = React.useState<EmployeePerformance | null>(null);
+  const [loadingPerformance, setLoadingPerformance] = React.useState(false);
+
   const isHR = user?.role === 'HR_HEAD' || user?.role === 'DIRECTOR';
+  const isDirector = user?.role === 'DIRECTOR';
 
   React.useEffect(() => {
     loadData();
   }, []);
 
   React.useEffect(() => {
-    // Set initial tab based on role
-    if (isHR) {
+    // Set initial tab from URL param or based on role
+    const validTabs = ['received', 'send', 'my', 'submit', 'submitted'];
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam as any);
+    } else if (isDirector) {
+      setActiveTab('send');
+    } else if (isHR) {
       setActiveTab('received');
     }
-  }, [isHR]);
+  }, [isHR, isDirector, tabParam]);
 
   const loadData = async () => {
     try {
@@ -139,23 +172,99 @@ export default function FeedbackPage() {
     }
   };
 
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (employeePickerRef.current && !employeePickerRef.current.contains(e.target as Node)) {
+        setShowEmployeeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleEmployeeSelection = (employeeId: string) => {
+    setSelectedEmployees((prev) =>
+      prev.includes(employeeId)
+        ? prev.filter((id) => id !== employeeId)
+        : [...prev, employeeId],
+    );
+  };
+
+  const removeSelectedEmployee = (employeeId: string) => {
+    setSelectedEmployees((prev) => prev.filter((id) => id !== employeeId));
+  };
+
+  // Load performance when exactly 1 employee is selected (Director feature)
+  React.useEffect(() => {
+    if (selectedEmployees.length === 1 && isDirector) {
+      setLoadingPerformance(true);
+      setEmployeePerformance(null);
+      dailyReportAPI
+        .getEmployeePerformance(selectedEmployees[0], { period: 'this_month' })
+        .then((res) => setEmployeePerformance(res.data))
+        .catch(() => setEmployeePerformance(null))
+        .finally(() => setLoadingPerformance(false));
+    } else {
+      setEmployeePerformance(null);
+    }
+  }, [selectedEmployees, isDirector]);
+
+  const filteredEmployeeList = employees.filter((emp) => {
+    if (employeeSearchTerm === '') return true;
+    const term = employeeSearchTerm.toLowerCase();
+    return (
+      emp.firstName.toLowerCase().includes(term) ||
+      emp.lastName.toLowerCase().includes(term) ||
+      emp.role?.name?.toLowerCase().includes(term)
+    );
+  });
+
+  const selectAllFiltered = () => {
+    const filteredIds = filteredEmployeeList.map((e) => e.id);
+    const allSelected = filteredIds.every((id) => selectedEmployees.includes(id));
+    if (allSelected) {
+      setSelectedEmployees((prev) => prev.filter((id) => !filteredIds.includes(id)));
+    } else {
+      setSelectedEmployees((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  };
+
   const handleSendFeedback = async () => {
-    if (!selectedEmployee || !feedbackSubject || !feedbackContent) {
+    if (selectedEmployees.length === 0 || !feedbackSubject || !feedbackContent) {
       return;
     }
 
     try {
       setSending(true);
-      await feedbackAPI.submitHRFeedback({
-        toId: selectedEmployee,
-        subject: feedbackSubject,
-        content: feedbackContent,
-      });
+
+      if (selectedEmployees.length === 1) {
+        await feedbackAPI.submitHRFeedback({
+          toId: selectedEmployees[0],
+          subject: feedbackSubject,
+          content: feedbackContent,
+        });
+        setSendSuccess('Feedback sent successfully!');
+      } else {
+        const result = await feedbackAPI.submitBulkHRFeedback({
+          toIds: selectedEmployees,
+          subject: feedbackSubject,
+          content: feedbackContent,
+        });
+        const data = result.data;
+        setSendSuccess(
+          `Feedback sent to ${data.sent} employee${data.sent !== 1 ? 's' : ''}${data.failed > 0 ? ` (${data.failed} failed)` : ''}!`,
+        );
+      }
 
       // Reset form
-      setSelectedEmployee('');
+      setSelectedEmployees([]);
+      setEmployeeSearchTerm('');
       setFeedbackSubject('');
       setFeedbackContent('');
+      setEmployeePerformance(null);
+
+      setTimeout(() => setSendSuccess(null), 3000);
 
       // Reload data
       loadData();
@@ -546,88 +655,527 @@ export default function FeedbackPage() {
 
         {/* Send Feedback Form */}
         {activeTab === 'send' && isHR && (
-          <div style={cardStyle}>
-            <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: '#111827' }}>
-                Send Feedback to Employee
-              </h3>
-              <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>
-                Provide constructive feedback to help employees grow
-              </p>
-            </div>
-            <div style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '600px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>
-                    Select Employee *
-                  </label>
-                  <select
-                    value={selectedEmployee}
-                    onChange={(e) => setSelectedEmployee(e.target.value)}
-                    style={selectStyle}
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+            <div style={{ ...cardStyle, flex: '1 1 400px', minWidth: '0' }}>
+              <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: '#111827' }}>
+                  Send Feedback to Employee{selectedEmployees.length > 1 ? 's' : ''}
+                </h3>
+                <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>
+                  {isDirector
+                    ? 'Evaluate performance and provide constructive feedback'
+                    : 'Provide constructive feedback to help employees grow'}
+                </p>
+              </div>
+              <div style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {sendSuccess && (
+                    <div style={{
+                      padding: '12px 16px',
+                      borderRadius: '8px',
+                      backgroundColor: '#dcfce7',
+                      border: '1px solid #86efac',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}>
+                      <CheckCircle style={{ height: '16px', width: '16px', color: '#16a34a' }} />
+                      <span style={{ fontSize: '14px', color: '#16a34a', fontWeight: 500 }}>
+                        {sendSuccess}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Multi-select Employee Picker */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>
+                      Select Employee{selectedEmployees.length > 1 ? 's' : ''} *
+                    </label>
+
+                    {/* Selected Employee Chips */}
+                    {selectedEmployees.length > 0 && (
+                      <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        marginBottom: '8px',
+                      }}>
+                        {selectedEmployees.map((empId) => {
+                          const emp = employees.find((e) => e.id === empId);
+                          if (!emp) return null;
+                          return (
+                            <span
+                              key={empId}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '4px 10px',
+                                borderRadius: '9999px',
+                                fontSize: '12px',
+                                fontWeight: 500,
+                                backgroundColor: '#f5f3ff',
+                                color: '#7c3aed',
+                                border: '1px solid #ddd6fe',
+                              }}
+                            >
+                              {emp.firstName} {emp.lastName}
+                              <button
+                                onClick={() => removeSelectedEmployee(empId)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  padding: 0,
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  color: '#7c3aed',
+                                  opacity: 0.7,
+                                }}
+                              >
+                                <X style={{ height: '12px', width: '12px' }} />
+                              </button>
+                            </span>
+                          );
+                        })}
+                        {selectedEmployees.length > 1 && (
+                          <button
+                            onClick={() => setSelectedEmployees([])}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 10px',
+                              borderRadius: '9999px',
+                              fontSize: '11px',
+                              fontWeight: 500,
+                              backgroundColor: '#fef2f2',
+                              color: '#dc2626',
+                              border: '1px solid #fecaca',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Clear all
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Searchable Dropdown */}
+                    <div ref={employeePickerRef} style={{ position: 'relative' }}>
+                      <div style={{ position: 'relative' }}>
+                        <Search style={{
+                          position: 'absolute',
+                          left: '12px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          height: '16px',
+                          width: '16px',
+                          color: '#9ca3af',
+                        }} />
+                        <input
+                          type="text"
+                          placeholder={selectedEmployees.length > 0
+                            ? `${selectedEmployees.length} selected — search to add more...`
+                            : 'Search employees by name or role...'}
+                          value={employeeSearchTerm}
+                          onChange={(e) => {
+                            setEmployeeSearchTerm(e.target.value);
+                            setShowEmployeeDropdown(true);
+                          }}
+                          onFocus={() => setShowEmployeeDropdown(true)}
+                          style={{ ...inputStyle, paddingLeft: '40px' }}
+                        />
+                      </div>
+
+                      {showEmployeeDropdown && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          marginTop: '4px',
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '10px',
+                          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                          maxHeight: '240px',
+                          overflowY: 'auto',
+                          zIndex: 20,
+                        }}>
+                          {/* Select All */}
+                          {filteredEmployeeList.length > 0 && (
+                            <div
+                              onClick={selectAllFiltered}
+                              style={{
+                                padding: '10px 16px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #f3f4f6',
+                                backgroundColor: '#f9fafb',
+                                transition: 'background-color 0.15s',
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f3f4f6')}
+                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                            >
+                              <div style={{
+                                width: '18px',
+                                height: '18px',
+                                borderRadius: '4px',
+                                border: `2px solid ${filteredEmployeeList.every((e) => selectedEmployees.includes(e.id)) ? '#7c3aed' : '#d1d5db'}`,
+                                backgroundColor: filteredEmployeeList.every((e) => selectedEmployees.includes(e.id)) ? '#7c3aed' : '#fff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}>
+                                {filteredEmployeeList.every((e) => selectedEmployees.includes(e.id)) && (
+                                  <CheckCircle style={{ height: '12px', width: '12px', color: '#fff' }} />
+                                )}
+                              </div>
+                              <span style={{ fontSize: '13px', fontWeight: 600, color: '#7c3aed' }}>
+                                {filteredEmployeeList.every((e) => selectedEmployees.includes(e.id))
+                                  ? 'Deselect All'
+                                  : `Select All (${filteredEmployeeList.length})`}
+                              </span>
+                            </div>
+                          )}
+
+                          {filteredEmployeeList.length === 0 ? (
+                            <div style={{ padding: '16px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
+                              No employees found
+                            </div>
+                          ) : (
+                            filteredEmployeeList.map((emp) => {
+                              const isSelected = selectedEmployees.includes(emp.id);
+                              return (
+                                <div
+                                  key={emp.id}
+                                  onClick={() => toggleEmployeeSelection(emp.id)}
+                                  style={{
+                                    padding: '10px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    cursor: 'pointer',
+                                    backgroundColor: isSelected ? '#faf5ff' : 'transparent',
+                                    transition: 'background-color 0.15s',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isSelected) e.currentTarget.style.backgroundColor = '#f9fafb';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = isSelected ? '#faf5ff' : 'transparent';
+                                  }}
+                                >
+                                  <div style={{
+                                    width: '18px',
+                                    height: '18px',
+                                    borderRadius: '4px',
+                                    border: `2px solid ${isSelected ? '#7c3aed' : '#d1d5db'}`,
+                                    backgroundColor: isSelected ? '#7c3aed' : '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    transition: 'all 0.15s',
+                                  }}>
+                                    {isSelected && (
+                                      <CheckCircle style={{ height: '12px', width: '12px', color: '#fff' }} />
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '13px', fontWeight: 500, color: '#111827' }}>
+                                      {emp.firstName} {emp.lastName}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                      {emp.role?.name || 'N/A'}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedEmployees.length > 1 && (
+                      <p style={{ fontSize: '12px', color: '#7c3aed', margin: '6px 0 0', fontWeight: 500 }}>
+                        Same feedback will be sent to all {selectedEmployees.length} selected employees
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>
+                      Subject *
+                    </label>
+                    <input
+                      type="text"
+                      value={feedbackSubject}
+                      onChange={(e) => setFeedbackSubject(e.target.value)}
+                      placeholder="e.g., Performance Review, Recognition, Improvement Areas"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>
+                      Feedback Content *
+                    </label>
+                    <textarea
+                      value={feedbackContent}
+                      onChange={(e) => setFeedbackContent(e.target.value)}
+                      placeholder="Write your feedback here..."
+                      rows={6}
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleSendFeedback}
+                    disabled={sending || selectedEmployees.length === 0 || !feedbackSubject || !feedbackContent}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '12px 24px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: sending || selectedEmployees.length === 0 || !feedbackSubject || !feedbackContent
+                        ? '#d1d5db'
+                        : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                      color: '#ffffff',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      cursor: sending || selectedEmployees.length === 0 || !feedbackSubject || !feedbackContent ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s',
+                      width: 'fit-content',
+                    }}
                   >
-                    <option value="">Choose an employee...</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.firstName} {emp.lastName} - {emp.role?.name || 'N/A'}
-                      </option>
-                    ))}
-                  </select>
+                    <Send style={{ height: '16px', width: '16px' }} />
+                    {sending
+                      ? 'Sending...'
+                      : selectedEmployees.length > 1
+                        ? `Send to ${selectedEmployees.length} Employees`
+                        : 'Send Feedback'}
+                  </button>
                 </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>
-                    Subject *
-                  </label>
-                  <input
-                    type="text"
-                    value={feedbackSubject}
-                    onChange={(e) => setFeedbackSubject(e.target.value)}
-                    placeholder="e.g., Performance Review, Recognition, Improvement Areas"
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>
-                    Feedback Content *
-                  </label>
-                  <textarea
-                    value={feedbackContent}
-                    onChange={(e) => setFeedbackContent(e.target.value)}
-                    placeholder="Write your feedback here..."
-                    rows={6}
-                    style={{ ...inputStyle, resize: 'vertical' }}
-                  />
-                </div>
-
-                <button
-                  onClick={handleSendFeedback}
-                  disabled={sending || !selectedEmployee || !feedbackSubject || !feedbackContent}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '12px 24px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    background: sending || !selectedEmployee || !feedbackSubject || !feedbackContent
-                      ? '#d1d5db'
-                      : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                    color: '#ffffff',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: sending || !selectedEmployee || !feedbackSubject || !feedbackContent ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s',
-                    width: 'fit-content',
-                  }}
-                >
-                  <Send style={{ height: '16px', width: '16px' }} />
-                  {sending ? 'Sending...' : 'Send Feedback'}
-                </button>
               </div>
             </div>
+
+            {/* Performance Summary Panel (Director feature — shown when exactly 1 employee selected) */}
+            {isDirector && selectedEmployees.length === 1 && (
+              <div style={{ ...cardStyle, flex: '1 1 340px', minWidth: '0', alignSelf: 'flex-start' }}>
+                <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <TrendingUp style={{ height: '18px', width: '18px', color: '#7c3aed' }} />
+                    Performance Summary
+                  </h3>
+                  <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }}>This month</p>
+                </div>
+                <div style={{ padding: '20px' }}>
+                  {loadingPerformance ? (
+                    <div style={{ textAlign: 'center', padding: '32px 0', color: '#6b7280' }}>
+                      <div style={{
+                        width: '28px', height: '28px',
+                        border: '3px solid #e5e7eb', borderTopColor: '#7c3aed',
+                        borderRadius: '50%', animation: 'spin 1s linear infinite',
+                        margin: '0 auto 12px',
+                      }} />
+                      <p style={{ fontSize: '13px', margin: 0 }}>Loading performance...</p>
+                    </div>
+                  ) : employeePerformance ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {/* Overall Score */}
+                      <div style={{
+                        padding: '16px',
+                        borderRadius: '12px',
+                        background: employeePerformance.overallAchievement >= 80
+                          ? 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)'
+                          : employeePerformance.overallAchievement >= 50
+                            ? 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)'
+                            : 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+                        textAlign: 'center',
+                      }}>
+                        <div style={{
+                          fontSize: '36px', fontWeight: 700,
+                          color: employeePerformance.overallAchievement >= 80 ? '#166534'
+                            : employeePerformance.overallAchievement >= 50 ? '#92400e' : '#991b1b',
+                        }}>
+                          {Math.round(employeePerformance.overallAchievement)}%
+                        </div>
+                        <div style={{
+                          fontSize: '13px', fontWeight: 500,
+                          color: employeePerformance.overallAchievement >= 80 ? '#166534'
+                            : employeePerformance.overallAchievement >= 50 ? '#92400e' : '#991b1b',
+                        }}>
+                          Overall Achievement
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                          {employeePerformance.totalReports} report{employeePerformance.totalReports !== 1 ? 's' : ''} submitted
+                        </div>
+                      </div>
+
+                      {/* Parameter Breakdown */}
+                      {employeePerformance.parameters.filter(p => p.paramType !== 'text').length > 0 && (
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '10px' }}>
+                            Parameter Performance
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {employeePerformance.parameters
+                              .filter(p => p.paramType !== 'text')
+                              .map((param) => {
+                                const pct = Math.min(param.achievementPct, 100);
+                                const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+                                return (
+                                  <div key={param.paramKey}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                      <span style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>{param.paramLabel}</span>
+                                      <span style={{ fontSize: '12px', fontWeight: 600, color }}>
+                                        {Math.round(param.achievementPct)}%
+                                      </span>
+                                    </div>
+                                    <div style={{ height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
+                                      <div style={{
+                                        width: `${pct}%`, height: '100%',
+                                        backgroundColor: color, borderRadius: '3px',
+                                        transition: 'width 0.3s ease',
+                                      }} />
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                                      <span style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                        Actual: {param.totalActual}
+                                      </span>
+                                      <span style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                        Target: {param.totalTarget}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Quick feedback suggestions */}
+                      <div style={{
+                        padding: '12px',
+                        borderRadius: '8px',
+                        backgroundColor: '#f5f3ff',
+                        border: '1px solid #ede9fe',
+                      }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#7c3aed', marginBottom: '8px' }}>
+                          Quick Suggestions
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {['Performance Review', 'Recognition', 'Improvement Areas', 'Goal Setting', 'Training Needed'].map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              onClick={() => {
+                                if (!feedbackSubject) setFeedbackSubject(suggestion);
+                              }}
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid #ddd6fe',
+                                backgroundColor: feedbackSubject === suggestion ? '#7c3aed' : '#ffffff',
+                                color: feedbackSubject === suggestion ? '#ffffff' : '#6b7280',
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '24px 0', color: '#9ca3af' }}>
+                      <TrendingUp style={{ height: '32px', width: '32px', margin: '0 auto 8px', opacity: 0.4 }} />
+                      <p style={{ fontSize: '13px', margin: 0 }}>No performance data available</p>
+                      <p style={{ fontSize: '12px', margin: '4px 0 0' }}>This employee may not have submitted reports yet</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Multi-employee info panel */}
+            {selectedEmployees.length > 1 && (
+              <div style={{ ...cardStyle, flex: '1 1 340px', minWidth: '0', alignSelf: 'flex-start' }}>
+                <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Users style={{ height: '18px', width: '18px', color: '#7c3aed' }} />
+                    Sending to {selectedEmployees.length} Employees
+                  </h3>
+                </div>
+                <div style={{ padding: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {selectedEmployees.map((empId) => {
+                    const emp = employees.find((e) => e.id === empId);
+                    if (!emp) return null;
+                    return (
+                      <div
+                        key={empId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 12px',
+                          borderBottom: '1px solid #f3f4f6',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            backgroundColor: '#f5f3ff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#7c3aed',
+                          }}>
+                            <User style={{ height: '14px', width: '14px' }} />
+                          </div>
+                          <div>
+                            <p style={{ fontSize: '13px', fontWeight: 500, color: '#111827', margin: 0 }}>
+                              {emp.firstName} {emp.lastName}
+                            </p>
+                            <p style={{ fontSize: '11px', color: '#9ca3af', margin: 0 }}>
+                              {emp.role?.name || 'N/A'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeSelectedEmployee(empId)}
+                          style={{
+                            padding: '4px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: '#fef2f2',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X style={{ height: '12px', width: '12px', color: '#ef4444' }} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

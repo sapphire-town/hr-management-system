@@ -68,6 +68,17 @@ export class PerformanceController {
     return this.performanceService.getTeamPerformanceDashboard(req.user.employeeId, filters);
   }
 
+  // Get specific manager's team dashboard (Director/HR)
+  @Get('team/dashboard/:managerId')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Get a specific manager\'s team performance dashboard' })
+  async getManagerTeamDashboard(
+    @Param('managerId') managerId: string,
+    @Query() filters: PerformanceFilterDto,
+  ) {
+    return this.performanceService.getTeamPerformanceDashboard(managerId, filters);
+  }
+
   // Get all teams performance (Director/HR)
   @Get('team/all')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)

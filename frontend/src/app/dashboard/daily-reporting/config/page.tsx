@@ -58,8 +58,8 @@ export default function DailyReportingConfigPage() {
   // Check if user is a director or HR Head
   const isDirector = user?.role === 'DIRECTOR' || user?.role === 'HR_HEAD';
 
-  const fetchRoles = React.useCallback(async () => {
-    setLoading(true);
+  const fetchRoles = React.useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await roleAPI.getAll();
       setRoles(response.data || []);
@@ -67,7 +67,7 @@ export default function DailyReportingConfigPage() {
       console.error('Error fetching roles:', error);
       setMessage({ type: 'error', text: 'Failed to load roles' });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -137,17 +137,22 @@ export default function DailyReportingConfigPage() {
   const handleSave = async (roleId: string) => {
     setSaving(roleId);
     setMessage(null);
-    console.log('Saving parameters for role:', roleId, 'Params:', editParams);
     try {
-      const response = await roleAPI.update(roleId, { dailyReportingParams: editParams });
-      console.log('Save response:', response.data);
-      await fetchRoles();
+      await roleAPI.update(roleId, { dailyReportingParams: editParams });
+      // Immediately update the local roles state so the view reflects the save
+      // without a loading flash
+      setRoles((prev) =>
+        prev.map((r) =>
+          r.id === roleId ? { ...r, dailyReportingParams: [...editParams] } : r,
+        ),
+      );
       setEditingRole(null);
       setMessage({ type: 'success', text: 'Parameters saved successfully' });
       setTimeout(() => setMessage(null), 3000);
+      // Also do a silent background refetch to sync any server-side changes
+      fetchRoles(true);
     } catch (error: any) {
       console.error('Error saving parameters:', error);
-      console.error('Error response:', error.response?.data);
       setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to save parameters' });
     } finally {
       setSaving(null);
@@ -431,7 +436,9 @@ export default function DailyReportingConfigPage() {
                                   )}
                                 </td>
                                 <td style={{ padding: '16px' }}>
-                                  {isEditing ? (
+                                  {param.type === 'text' ? (
+                                    <span style={{ fontSize: '13px', color: '#9ca3af' }}>—</span>
+                                  ) : isEditing ? (
                                     <input
                                       type="number"
                                       value={param.target}
@@ -447,12 +454,18 @@ export default function DailyReportingConfigPage() {
                                   {isEditing ? (
                                     <select
                                       value={param.type}
-                                      onChange={(e) => handleParamChange(index, 'type', e.target.value)}
+                                      onChange={(e) => {
+                                        handleParamChange(index, 'type', e.target.value);
+                                        if (e.target.value === 'text') {
+                                          handleParamChange(index, 'target', 0);
+                                        }
+                                      }}
                                       style={{ ...inputStyle, width: '120px' }}
                                     >
                                       <option value="number">Number</option>
                                       <option value="percentage">Percentage</option>
                                       <option value="currency">Currency</option>
+                                      <option value="text">Text</option>
                                     </select>
                                   ) : (
                                     <span style={{ fontSize: '13px', color: '#6b7280', textTransform: 'capitalize' }}>{param.type}</span>
@@ -577,31 +590,34 @@ export default function DailyReportingConfigPage() {
                           </div>
                           <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#6b7280', marginBottom: '4px' }}>
-                              Target (expected result)
-                            </label>
-                            <input
-                              type="number"
-                              value={newParam.target}
-                              onChange={(e) => setNewParam({ ...newParam, target: parseInt(e.target.value) || 0 })}
-                              style={inputStyle}
-                              min="0"
-                              placeholder="e.g., 50"
-                            />
-                          </div>
-                          <div>
-                            <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#6b7280', marginBottom: '4px' }}>
                               Type
                             </label>
                             <select
                               value={newParam.type}
-                              onChange={(e) => setNewParam({ ...newParam, type: e.target.value })}
+                              onChange={(e) => setNewParam({ ...newParam, type: e.target.value, ...(e.target.value === 'text' ? { target: 0 } : {}) })}
                               style={inputStyle}
                             >
                               <option value="number">Number</option>
                               <option value="percentage">Percentage</option>
                               <option value="currency">Currency</option>
+                              <option value="text">Text</option>
                             </select>
                           </div>
+                          {newParam.type !== 'text' && (
+                            <div>
+                              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#6b7280', marginBottom: '4px' }}>
+                                Target (expected result)
+                              </label>
+                              <input
+                                type="number"
+                                value={newParam.target}
+                                onChange={(e) => setNewParam({ ...newParam, target: parseInt(e.target.value) || 0 })}
+                                style={inputStyle}
+                                min="0"
+                                placeholder="e.g., 50"
+                              />
+                            </div>
+                          )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px' }}>
                           <button

@@ -5,6 +5,7 @@ import {
   UpdateCompanySettingsDto,
   UpdateLeavePoliciesDto,
   UpdateNotificationPreferencesDto,
+  UpdatePayslipTemplateDto,
 } from './dto/settings.dto';
 
 const DEFAULT_SETTINGS_ID = 'default-company-settings';
@@ -269,5 +270,39 @@ export class SettingsService {
       leavePolicies: defaultLeavePolicies,
       employeesUpdated: result.count,
     };
+  }
+
+  async uploadLogo(filePath: string, updatedBy: string) {
+    const settings = await this.getSettings();
+    return this.prisma.companySettings.update({
+      where: { id: settings.id },
+      data: {
+        companyLogo: filePath,
+        updatedBy,
+      },
+    });
+  }
+
+  async updatePayslipTemplate(dto: UpdatePayslipTemplateDto, updatedBy: string) {
+    const settings = await this.getSettings();
+    const currentTemplate = (settings.payslipTemplate as Record<string, any>) || {};
+
+    const updatedTemplate = {
+      ...currentTemplate,
+      ...(dto.companyAddress !== undefined && { companyAddress: dto.companyAddress }),
+      ...(dto.registrationNumber !== undefined && { registrationNumber: dto.registrationNumber }),
+      ...(dto.signatoryName !== undefined && { signatoryName: dto.signatoryName }),
+      ...(dto.signatoryTitle !== undefined && { signatoryTitle: dto.signatoryTitle }),
+      ...(dto.footerText !== undefined && { footerText: dto.footerText }),
+      ...(dto.primaryColor !== undefined && { primaryColor: dto.primaryColor }),
+    };
+
+    return this.prisma.companySettings.update({
+      where: { id: settings.id },
+      data: {
+        payslipTemplate: updatedTemplate,
+        updatedBy,
+      },
+    });
   }
 }

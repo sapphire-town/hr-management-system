@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { NotificationService } from '../notification/notification.service';
 import {
@@ -549,5 +550,255 @@ export class RecruitmentService {
       selectionRate: totalStudents > 0 ? Math.round((selectedStudents / totalStudents) * 100) : 0,
       recentDrives,
     };
+  }
+
+  // ==================== STUDENT EXCEL IMPORT ====================
+
+  private extractCellValue(cellValue: any): string | number | null {
+    if (cellValue === null || cellValue === undefined) return null;
+    if (cellValue instanceof Date) return cellValue.toISOString().split('T')[0];
+    if (typeof cellValue === 'object' && cellValue.text !== undefined) return String(cellValue.text);
+    if (typeof cellValue === 'object' && Array.isArray(cellValue.richText)) {
+      return cellValue.richText.map((rt: any) => rt.text || '').join('');
+    }
+    if (typeof cellValue === 'object' && cellValue.result !== undefined) {
+      return this.extractCellValue(cellValue.result);
+    }
+    if (typeof cellValue === 'object' && cellValue.error) return null;
+    if (typeof cellValue === 'object') return String(cellValue);
+    return cellValue;
+  }
+
+  async importStudentsFromExcel(driveId: string, fileBuffer: Buffer) {
+    const drive = await this.prisma.placementDrive.findUnique({ where: { id: driveId } });
+    if (!drive) {
+      throw new NotFoundException('Placement drive not found');
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(fileBuffer as any);
+
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) {
+      throw new BadRequestException('Invalid Excel file - no worksheet found');
+    }
+
+    // Get headers from first row
+    const headers: string[] = [];
+    worksheet.getRow(1).eachCell((cell, colNumber) => {
+      const value = this.extractCellValue(cell.value);
+      headers[colNumber] = String(value || '').toLowerCase().trim();
+    });
+
+    const getString = (value: any): string => {
+      if (value === null || value === undefined) return '';
+      return String(value).trim();
+    };
+
+    // Parse data rows
+    const students: Array<{ name: string; email: string; phone: string; studentData: Record<string, any> }> = [];
+    const results: Array<{ row: number; name: string; status: 'success' | 'failed'; message?: string }> = [];
+
+    // Known core fields (will not go into studentData)
+    const coreFields = new Set(['name', 'student name', 'student_name', 'fullname', 'full name', 'full_name',
+      'email', 'email address', 'email_address', 'phone', 'mobile', 'phone number', 'phone_number', 'contact']);
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+
+      const record: any = {};
+      row.eachCell((cell, colNumber) => {
+        const header = headers[colNumber];
+        if (header) {
+          record[header] = this.extractCellValue(cell.value);
+        }
+      });
+
+      const name = getString(
+        record.name || record['student name'] || record.student_name ||
+        record.fullname || record['full name'] || record.full_name,
+      );
+      const email = getString(
+        record.email || record['email address'] || record.email_address,
+      );
+      const phone = getString(
+        record.phone || record.mobile || record['phone number'] || record.phone_number || record.contact,
+      );
+
+      if (!name) {
+        results.push({ row: rowNumber, name: name || '(empty)', status: 'failed', message: 'Name is required' });
+        return;
+      }
+      if (!email) {
+        results.push({ row: rowNumber, name, status: 'failed', message: 'Email is required' });
+        return;
+      }
+
+      // Collect any extra columns as studentData
+      const studentData: Record<string, any> = {};
+      for (const [key, value] of Object.entries(record)) {
+        if (!coreFields.has(key) && value !== null && value !== undefined && String(value).trim() !== '') {
+          // Use original header casing from the Excel file
+          const originalHeader = headers.find((_, idx) => headers[idx] === key);
+          studentData[key] = value;
+        }
+      }
+
+      students.push({ name, email, phone, studentData });
+      results.push({ row: rowNumber, name, status: 'success' });
+    });
+
+    if (students.length === 0) {
+      throw new BadRequestException(
+        results.length > 0
+          ? `No valid student records found. ${results.filter(r => r.status === 'failed').length} rows had errors.`
+          : 'No data rows found in the Excel file',
+      );
+    }
+
+    // Check for duplicate emails within the file
+    const emailSet = new Set<string>();
+    const deduped: typeof students = [];
+    for (let i = 0; i < students.length; i++) {
+      const emailLower = students[i].email.toLowerCase();
+      if (emailSet.has(emailLower)) {
+        const resultIdx = results.findIndex(r => r.row === i + 2 && r.status === 'success');
+        if (resultIdx >= 0) {
+          results[resultIdx] = { ...results[resultIdx], status: 'failed', message: 'Duplicate email in file' };
+        }
+      } else {
+        emailSet.add(emailLower);
+        deduped.push(students[i]);
+      }
+    }
+
+    // Check for existing emails in this drive
+    const existingStudents = await this.prisma.student.findMany({
+      where: { driveId },
+      select: { email: true },
+    });
+    const existingEmails = new Set(existingStudents.map(s => s.email.toLowerCase()));
+
+    const toInsert: typeof deduped = [];
+    for (const student of deduped) {
+      if (existingEmails.has(student.email.toLowerCase())) {
+        const resultIdx = results.findIndex(r => r.name === student.name && r.status === 'success');
+        if (resultIdx >= 0) {
+          results[resultIdx] = { ...results[resultIdx], status: 'failed', message: 'Student email already exists in this drive' };
+        }
+      } else {
+        toInsert.push(student);
+      }
+    }
+
+    // Bulk insert valid students
+    let insertedCount = 0;
+    if (toInsert.length > 0) {
+      const result = await this.prisma.student.createMany({
+        data: toInsert.map(s => ({
+          driveId,
+          name: s.name,
+          email: s.email,
+          phone: s.phone,
+          studentData: s.studentData,
+        })),
+      });
+      insertedCount = result.count;
+
+      // Notify interviewers
+      if (insertedCount > 0) {
+        await this.notificationService.notifyStudentAdded(driveId, insertedCount);
+      }
+    }
+
+    const successful = results.filter(r => r.status === 'success').length;
+    const failed = results.filter(r => r.status === 'failed').length;
+
+    return {
+      total: results.length,
+      successful,
+      failed,
+      inserted: insertedCount,
+      results,
+    };
+  }
+
+  async generateStudentImportTemplate(): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Student Import');
+
+    worksheet.columns = [
+      { header: 'Name', key: 'name', width: 25 },
+      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Phone', key: 'phone', width: 18 },
+      { header: 'College', key: 'college', width: 25 },
+      { header: 'Branch', key: 'branch', width: 25 },
+      { header: 'CGPA', key: 'cgpa', width: 10 },
+      { header: 'Graduation Year', key: 'graduationYear', width: 18 },
+    ];
+
+    // Style header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF7C3AED' },
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 25;
+
+    // Sample data rows
+    worksheet.addRow({
+      name: 'Rahul Kumar',
+      email: 'rahul.kumar@college.edu',
+      phone: '9876543210',
+      college: 'Tech University',
+      branch: 'Computer Science',
+      cgpa: 8.5,
+      graduationYear: 2026,
+    });
+    worksheet.addRow({
+      name: 'Priya Sharma',
+      email: 'priya.sharma@college.edu',
+      phone: '9876543211',
+      college: 'Tech University',
+      branch: 'Information Technology',
+      cgpa: 9.0,
+      graduationYear: 2026,
+    });
+
+    // Instructions sheet
+    const instructionsSheet = workbook.addWorksheet('Instructions');
+    instructionsSheet.columns = [
+      { header: 'Column', key: 'column', width: 20 },
+      { header: 'Description', key: 'description', width: 50 },
+      { header: 'Required', key: 'required', width: 12 },
+    ];
+
+    const instrHeaderRow = instructionsSheet.getRow(1);
+    instrHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    instrHeaderRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF7C3AED' },
+    };
+
+    const instructions = [
+      { column: 'Name', description: 'Full name of the student', required: 'Yes' },
+      { column: 'Email', description: 'Student email address', required: 'Yes' },
+      { column: 'Phone', description: 'Contact phone number', required: 'No' },
+      { column: 'College', description: 'College/University name (stored in student data)', required: 'No' },
+      { column: 'Branch', description: 'Department/Branch of study (stored in student data)', required: 'No' },
+      { column: 'CGPA', description: 'Cumulative GPA (stored in student data)', required: 'No' },
+      { column: 'Graduation Year', description: 'Expected graduation year (stored in student data)', required: 'No' },
+      { column: '', description: '', required: '' },
+      { column: 'Note', description: 'You can add any additional columns. Extra columns will be stored as student data.', required: '' },
+    ];
+
+    instructions.forEach(i => instructionsSheet.addRow(i));
+
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(arrayBuffer);
   }
 }

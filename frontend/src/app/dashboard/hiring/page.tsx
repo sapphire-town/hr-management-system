@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/store/auth-store';
 import { DashboardLayout } from '@/components/layout';
-import { hiringAPI, roleAPI } from '@/lib/api-client';
+import { hiringAPI, roleAPI, recruitmentAPI } from '@/lib/api-client';
 import {
   Plus,
   Briefcase,
@@ -18,6 +18,10 @@ import {
   Flag,
   Loader2,
   Trash2,
+  MapPin,
+  Calendar,
+  GraduationCap,
+  UserCheck,
 } from 'lucide-react';
 
 interface HiringRequest {
@@ -72,6 +76,17 @@ interface RequirementStats {
   };
 }
 
+interface PlacementDrive {
+  id: string;
+  collegeName: string;
+  driveDate: string;
+  roles: { name: string; positions: number }[];
+  createdAt: string;
+  interviewers: { id: string; employee: { firstName: string; lastName: string } }[];
+  _count?: { students: number };
+  students?: { id: string; evaluations?: { status: string }[] }[];
+}
+
 const URGENCY_CONFIG: Record<string, { color: string; bg: string; icon: any }> = {
   LOW: { color: '#6b7280', bg: '#f3f4f6', icon: Flag },
   MEDIUM: { color: '#d97706', bg: '#fef3c7', icon: Flag },
@@ -107,6 +122,7 @@ export default function HiringRequestsPage() {
   const [stats, setStats] = useState<HiringStats | null>(null);
   const [requirementStats, setRequirementStats] = useState<RequirementStats | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [placementDrives, setPlacementDrives] = useState<PlacementDrive[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -141,14 +157,22 @@ export default function HiringRequestsPage() {
       setRequests(requestsRes.data?.data || requestsRes.data || []);
       setRoles(rolesRes.data || []);
 
-      // Stats and requirements only for Director & HR
+      // Stats, requirements, and placement drives for Director & HR
       if (isDirector || isHR) {
-        const [statsRes, reqStatsRes] = await Promise.all([
+        const [statsRes, reqStatsRes, drivesRes] = await Promise.all([
           hiringAPI.getStats(),
           roleAPI.getStatistics(),
+          recruitmentAPI.getDrives(),
         ]);
         setStats(statsRes.data);
         setRequirementStats(reqStatsRes.data);
+
+        const allDrives: PlacementDrive[] = drivesRes.data?.data || drivesRes.data || [];
+        // Show upcoming and recent drives (within 30 days past / any future)
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        const activeDrives = allDrives.filter((d) => new Date(d.driveDate) >= thirtyDaysAgo);
+        setPlacementDrives(activeDrives);
       }
     } catch (err) {
       console.error('Failed to fetch hiring data:', err);
@@ -443,6 +467,121 @@ export default function HiringRequestsPage() {
                 <div style={{ fontSize: '13px', color: '#6b7280' }}>
                   Approved and In-Progress requests are your targets to fill. Update status as you progress.
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Current Placement Drives - Director & HR */}
+          {(isDirector || isHR) && placementDrives.length > 0 && (
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                padding: '24px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                border: '1px solid #f3f4f6',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111827', margin: 0 }}>
+                  Current Placement Drives
+                </h3>
+                <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                  {placementDrives.length} drive{placementDrives.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+                {placementDrives.map((drive) => {
+                  const driveDate = new Date(drive.driveDate);
+                  const now = new Date();
+                  const isUpcoming = driveDate > now;
+                  const isPast = driveDate < new Date(now.toDateString());
+                  const isToday = driveDate.toDateString() === now.toDateString();
+                  const studentCount = drive._count?.students || drive.students?.length || 0;
+                  const totalPositions = (drive.roles || []).reduce((sum: number, r: any) => sum + (r.positions || 0), 0);
+
+                  return (
+                    <div
+                      key={drive.id}
+                      style={{
+                        padding: '18px',
+                        borderRadius: '14px',
+                        border: `1px solid ${isToday ? '#c4b5fd' : isUpcoming ? '#bfdbfe' : '#e5e7eb'}`,
+                        backgroundColor: isToday ? '#faf5ff' : isUpcoming ? '#eff6ff' : '#fafafa',
+                      }}
+                    >
+                      {/* Header */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{
+                            width: '38px', height: '38px', borderRadius: '10px',
+                            backgroundColor: isToday ? '#ede9fe' : isUpcoming ? '#dbeafe' : '#f3f4f6',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <GraduationCap style={{ width: '20px', height: '20px', color: isToday ? '#7c3aed' : isUpcoming ? '#3b82f6' : '#6b7280' }} />
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#111827' }}>
+                              {drive.collegeName}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                              <Calendar style={{ width: '12px', height: '12px' }} />
+                              {driveDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </div>
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px',
+                          borderRadius: '9999px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          backgroundColor: isToday ? '#ede9fe' : isUpcoming ? '#dbeafe' : '#f3f4f6',
+                          color: isToday ? '#7c3aed' : isUpcoming ? '#3b82f6' : '#6b7280',
+                        }}>
+                          {isToday ? 'Today' : isUpcoming ? 'Upcoming' : 'Completed'}
+                        </span>
+                      </div>
+
+                      {/* Roles */}
+                      {drive.roles && drive.roles.length > 0 && (
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                            Roles ({totalPositions} position{totalPositions !== 1 ? 's' : ''})
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {drive.roles.map((role: any, idx: number) => (
+                              <span
+                                key={idx}
+                                style={{
+                                  padding: '3px 10px',
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  backgroundColor: '#f3f4f6',
+                                  color: '#374151',
+                                }}
+                              >
+                                {role.name}{role.positions > 1 ? ` (${role.positions})` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Stats Row */}
+                      <div style={{ display: 'flex', gap: '16px', fontSize: '13px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#6b7280' }}>
+                          <Users style={{ width: '14px', height: '14px' }} />
+                          <span><strong style={{ color: '#111827' }}>{studentCount}</strong> students</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#6b7280' }}>
+                          <UserCheck style={{ width: '14px', height: '14px' }} />
+                          <span><strong style={{ color: '#111827' }}>{drive.interviewers?.length || 0}</strong> interviewers</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

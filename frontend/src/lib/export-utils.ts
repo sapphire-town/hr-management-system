@@ -198,7 +198,7 @@ export function exportDailyReportPerformanceToPDF(
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text('Daily Report Performance', 14, 18);
+  doc.text('Employee Individual Performance', 14, 18);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.text(`${performance.employeeName} | ${performance.roleName}`, 14, 28);
@@ -270,6 +270,34 @@ export function exportDailyReportPerformanceToPDF(
   doc.save(`performance_report_${performance.employeeName.replace(/\s+/g, '_')}_${periodLabel.replace(/\s+/g, '_')}.pdf`);
 }
 
+export interface PayslipTemplateConfig {
+  companyName?: string;
+  companyLogo?: string; // base64 data URL
+  companyAddress?: string;
+  registrationNumber?: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  footerText?: string;
+  primaryColor?: string; // hex color like #7c3aed
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+  ];
+}
+
+function lightenRgb(rgb: [number, number, number], factor: number): [number, number, number] {
+  return [
+    Math.min(255, Math.round(rgb[0] + (255 - rgb[0]) * factor)),
+    Math.min(255, Math.round(rgb[1] + (255 - rgb[1]) * factor)),
+    Math.min(255, Math.round(rgb[2] + (255 - rgb[2]) * factor)),
+  ];
+}
+
 export function exportPayslipToPDF(
   payslip: {
     month: string;
@@ -292,6 +320,7 @@ export function exportPayslipToPDF(
     };
   },
   leaveBalance?: { sick: number; casual: number; earned: number; total: number } | null,
+  templateConfig?: PayslipTemplateConfig | null,
 ): void {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -300,27 +329,66 @@ export function exportPayslipToPDF(
   const monthDate = new Date(payslip.month + '-01');
   const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  // Purple gradient header
-  doc.setFillColor(124, 58, 237);
-  doc.rect(0, 0, pageWidth, 45, 'F');
-  doc.setFillColor(139, 92, 246);
+  const primaryHex = templateConfig?.primaryColor || '#7c3aed';
+  const primaryRgb = hexToRgb(primaryHex);
+  const lightRgb = lightenRgb(primaryRgb, 0.12);
+  const altRowRgb = lightenRgb(primaryRgb, 0.92);
+
+  // Header
+  let headerHeight = 45;
+  const hasLogo = templateConfig?.companyLogo;
+  const companyName = templateConfig?.companyName || 'Payslip';
+
+  if (hasLogo || templateConfig?.companyAddress) {
+    headerHeight = 55;
+  }
+
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+  doc.setFillColor(lightRgb[0], lightRgb[1], lightRgb[2]);
   doc.rect(0, 0, pageWidth, 4, 'F');
 
+  let headerX = 14;
+
+  // Add logo if available
+  if (hasLogo) {
+    try {
+      doc.addImage(templateConfig!.companyLogo!, 'PNG', 14, 8, 30, 30);
+      headerX = 50;
+    } catch {
+      // Logo failed to load, continue without it
+    }
+  }
+
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
+  doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text('Payslip', 14, 20);
-  doc.setFontSize(12);
+  doc.text(companyName, headerX, 18);
+
+  if (templateConfig?.companyAddress) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(templateConfig.companyAddress, headerX, 25);
+  }
+
+  if (templateConfig?.registrationNumber) {
+    doc.setFontSize(8);
+    doc.text(`Reg: ${templateConfig.registrationNumber}`, headerX, templateConfig?.companyAddress ? 31 : 25);
+  }
+
+  // Month and employee info (right-aligned in header)
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Payslip - ${monthLabel}`, pageWidth - 14, 18, { align: 'right' });
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(monthLabel, 14, 30);
-  doc.setFontSize(11);
-  doc.text(`${employeeName} | ${roleName}`, 14, 39);
+  doc.text(`${employeeName} | ${roleName}`, pageWidth - 14, 26, { align: 'right' });
 
   const perDay = payslip.workingDays > 0 ? payslip.baseSalary / payslip.workingDays : 0;
   const fmt = (n: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n);
 
   // Earnings
-  let y = 55;
+  let y = headerHeight + 10;
   doc.setTextColor(55, 65, 81);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
@@ -337,8 +405,8 @@ export function exportPayslipToPDF(
       ['Gross Pay', fmt(payslip.grossPay)],
     ],
     styles: { fontSize: 10, cellPadding: 5 },
-    headStyles: { fillColor: [124, 58, 237], textColor: 255, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [245, 243, 255] },
+    headStyles: { fillColor: primaryRgb, textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: altRowRgb },
     columnStyles: { 1: { halign: 'right' } },
   });
 
@@ -397,34 +465,9 @@ export function exportPayslipToPDF(
     columnStyles: { 1: { halign: 'right' } },
   });
 
-  // Leave balance
-  if (leaveBalance) {
-    y = (doc as any).lastAutoTable.finalY + 12;
-    doc.setTextColor(55, 65, 81);
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Leave Balance', 14, y);
-    y += 4;
-
-    doc.autoTable({
-      startY: y,
-      head: [['Leave Type', 'Remaining Days']],
-      body: [
-        ['Sick Leave', String(leaveBalance.sick)],
-        ['Casual Leave', String(leaveBalance.casual)],
-        ['Earned Leave', String(leaveBalance.earned)],
-        ['Total', String(leaveBalance.total)],
-      ],
-      styles: { fontSize: 10, cellPadding: 5 },
-      headStyles: { fillColor: [22, 163, 74], textColor: 255, fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [240, 253, 244] },
-      columnStyles: { 1: { halign: 'right' } },
-    });
-  }
-
   // Net pay highlight
   y = (doc as any).lastAutoTable.finalY + 14;
-  doc.setFillColor(124, 58, 237);
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.roundedRect(14, y, pageWidth - 28, 28, 4, 4, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(14);
@@ -433,14 +476,39 @@ export function exportPayslipToPDF(
   doc.setFontSize(18);
   doc.text(`INR ${fmt(payslip.netPay)}`, pageWidth - 24, y + 14, { align: 'right' });
 
+  // Authorized signatory
+  if (templateConfig?.signatoryName) {
+    y += 44;
+    doc.setTextColor(55, 65, 81);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    // Line for signature
+    doc.setDrawColor(180, 180, 180);
+    doc.line(pageWidth - 90, y, pageWidth - 14, y);
+    y += 6;
+    doc.setFont('helvetica', 'bold');
+    doc.text(templateConfig.signatoryName, pageWidth - 14, y, { align: 'right' });
+    if (templateConfig.signatoryTitle) {
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(templateConfig.signatoryTitle, pageWidth - 14, y, { align: 'right' });
+    }
+    y += 5;
+    doc.setFontSize(8);
+    doc.setTextColor(128);
+    doc.text('Authorized Signatory', pageWidth - 14, y, { align: 'right' });
+  }
+
   // Footer
+  const footerText = templateConfig?.footerText || 'HR Management System';
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(128);
     doc.text(
-      `Generated on ${new Date().toLocaleDateString()} | HR Management System | Page ${i} of ${pageCount}`,
+      `Generated on ${new Date().toLocaleDateString()} | ${footerText} | Page ${i} of ${pageCount}`,
       14,
       doc.internal.pageSize.height - 10,
     );

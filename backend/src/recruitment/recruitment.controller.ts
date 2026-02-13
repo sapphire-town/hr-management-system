@@ -7,9 +7,14 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -122,7 +127,7 @@ export class RecruitmentController {
   // ==================== STUDENTS ====================
 
   @Post('drives/:id/students')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
   @ApiOperation({ summary: 'Add a student to placement drive' })
   async addStudent(
     @Param('id') id: string,
@@ -132,13 +137,41 @@ export class RecruitmentController {
   }
 
   @Post('drives/:id/students/bulk')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
   @ApiOperation({ summary: 'Bulk add students to placement drive' })
   async bulkAddStudents(
     @Param('id') id: string,
     @Body() dto: BulkCreateStudentsDto,
   ) {
     return this.recruitmentService.bulkAddStudents(id, dto);
+  }
+
+  @Post('drives/:id/students/import')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
+  @ApiOperation({ summary: 'Bulk import students from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  async importStudentsFromExcel(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.recruitmentService.importStudentsFromExcel(id, file.buffer);
+  }
+
+  @Get('students/import-template')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
+  @ApiOperation({ summary: 'Download student import Excel template' })
+  async downloadStudentImportTemplate(@Res() res: Response) {
+    const buffer = await this.recruitmentService.generateStudentImportTemplate();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename=student_import_template.xlsx',
+    );
+    res.send(buffer);
   }
 
   @Get('drives/:id/students')

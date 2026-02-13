@@ -71,3 +71,35 @@ export class UpdateNotificationPreferencesDto {
   @IsNumber()
   reminderDaysBefore?: number;
 }
+
+export class UpdatePayslipTemplateDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  companyAddress?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  registrationNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  signatoryName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  signatoryTitle?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  footerText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  primaryColor?: string;
+}

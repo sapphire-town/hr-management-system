@@ -36,6 +36,7 @@ export default function DashboardPage() {
       case 'MANAGER':
         return <ManagerDashboard />;
       case 'EMPLOYEE':
+      case 'INTERN':
         return <EmployeeDashboard />;
       case 'INTERVIEWER':
         return <InterviewerDashboard />;

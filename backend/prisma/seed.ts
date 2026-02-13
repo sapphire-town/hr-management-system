@@ -365,6 +365,52 @@ async function main() {
 
   console.log('Created sample placement drive with students');
 
+  // Create Intern user
+  const internUser = await prisma.user.upsert({
+    where: { email: 'intern@company.com' },
+    update: {},
+    create: {
+      email: 'intern@company.com',
+      password: hashedPassword,
+      role: 'INTERN',
+      isActive: true,
+    },
+  });
+
+  const internRole = await prisma.role.upsert({
+    where: { name: 'Intern' },
+    update: {},
+    create: {
+      name: 'Intern',
+      dailyReportingParams: [],
+      performanceChartConfig: {},
+      createdBy: directorUser.id,
+    },
+  });
+
+  await prisma.employee.upsert({
+    where: { userId: internUser.id },
+    update: {},
+    create: {
+      userId: internUser.id,
+      firstName: 'Test',
+      lastName: 'Intern',
+      roleId: internRole.id,
+      salary: 15000,
+      employeeType: 'INTERN',
+      internType: 'SUMMER',
+      contractEndDate: new Date(currentYear, 11, 31),
+      internshipDuration: '6 months',
+      managerId: managerEmployee.id,
+      joinDate: new Date(currentYear, 0, 15),
+      sickLeaveBalance: 0,
+      casualLeaveBalance: 0,
+      earnedLeaveBalance: 0,
+    },
+  });
+
+  console.log('Created Intern: intern@company.com');
+
   console.log('');
   console.log('='.repeat(50));
   console.log('SEED COMPLETED SUCCESSFULLY!');
@@ -377,6 +423,7 @@ async function main() {
   console.log('  - Employee: employee@company.com');
   console.log('  - Employee 2: employee2@company.com');
   console.log('  - Interviewer: interviewer@company.com');
+  console.log('  - Intern: intern@company.com');
   console.log('');
 }
 

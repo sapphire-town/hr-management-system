@@ -7,7 +7,7 @@ const SESSION_TIMEOUT = 5 * 60 * 60 * 1000;
 export interface User {
   id: string;
   email: string;
-  role: 'DIRECTOR' | 'HR_HEAD' | 'MANAGER' | 'EMPLOYEE' | 'INTERVIEWER';
+  role: 'DIRECTOR' | 'HR_HEAD' | 'MANAGER' | 'EMPLOYEE' | 'INTERVIEWER' | 'INTERN';
   employee?: {
     id: string;
     firstName: string;

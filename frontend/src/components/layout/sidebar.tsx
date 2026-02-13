@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth-store';
 import { useUIStore } from '@/store/ui-store';
@@ -16,7 +16,9 @@ function SidebarItem({
   collapsed: boolean;
 }) {
   const pathname = usePathname();
-  const isActive = pathname === item.href;
+  const searchParams = useSearchParams();
+  const currentUrl = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+  const isActive = item.href.includes('?') ? currentUrl === item.href : pathname === item.href;
   const Icon = item.icon;
 
   return (
