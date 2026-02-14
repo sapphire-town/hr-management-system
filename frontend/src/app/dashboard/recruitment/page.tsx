@@ -17,6 +17,7 @@ import {
   XCircle,
   Clock,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
 import { recruitmentAPI, employeeAPI } from '@/lib/api-client';
@@ -43,6 +44,7 @@ interface Interviewer {
 }
 
 export default function RecruitmentPage() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const [drives, setDrives] = React.useState<PlacementDrive[]>([]);
   const [interviewers, setInterviewers] = React.useState<Interviewer[]>([]);
@@ -51,6 +53,7 @@ export default function RecruitmentPage() {
   const [showAssignModal, setShowAssignModal] = React.useState(false);
   const [selectedDrive, setSelectedDrive] = React.useState<PlacementDrive | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = React.useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = React.useState<{ top: number; left: number } | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [stats, setStats] = React.useState<any>(null);
 
@@ -437,101 +440,27 @@ export default function RecruitmentPage() {
                           </div>
                         </td>
                         <td style={{ padding: '18px 24px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
-                          <div style={{ position: 'relative', display: 'inline-block' }}>
-                            <button
-                              onClick={() => setActionMenuOpen(actionMenuOpen === drive.id ? null : drive.id)}
-                              style={{
-                                padding: '8px',
-                                borderRadius: '8px',
-                                border: '1px solid #e5e7eb',
-                                backgroundColor: '#ffffff',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <MoreVertical style={{ width: '16px', height: '16px', color: '#6b7280' }} />
-                            </button>
-                            {actionMenuOpen === drive.id && (
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  right: 0,
-                                  top: '100%',
-                                  marginTop: '4px',
-                                  backgroundColor: '#ffffff',
-                                  borderRadius: '12px',
-                                  boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
-                                  border: '1px solid #e5e7eb',
-                                  minWidth: '180px',
-                                  zIndex: 50,
-                                }}
-                              >
-                                <button
-                                  onClick={() => {
-                                    // View details
-                                    setActionMenuOpen(null);
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    padding: '12px 16px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '12px',
-                                    border: 'none',
-                                    backgroundColor: 'transparent',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    color: '#374151',
-                                  }}
-                                >
-                                  <Eye style={{ width: '16px', height: '16px' }} />
-                                  View Details
-                                </button>
-                                {isHROrDirector && (
-                                  <>
-                                    <button
-                                      onClick={() => openAssignModal(drive)}
-                                      style={{
-                                        width: '100%',
-                                        padding: '12px 16px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px',
-                                        border: 'none',
-                                        backgroundColor: 'transparent',
-                                        cursor: 'pointer',
-                                        fontSize: '14px',
-                                        color: '#374151',
-                                      }}
-                                    >
-                                      <UserPlus style={{ width: '16px', height: '16px' }} />
-                                      Assign Interviewers
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        handleDeleteDrive(drive.id);
-                                        setActionMenuOpen(null);
-                                      }}
-                                      style={{
-                                        width: '100%',
-                                        padding: '12px 16px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '12px',
-                                        border: 'none',
-                                        backgroundColor: 'transparent',
-                                        cursor: 'pointer',
-                                        fontSize: '14px',
-                                        color: '#ef4444',
-                                      }}
-                                    >
-                                      <Trash2 style={{ width: '16px', height: '16px' }} />
-                                      Delete Drive
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
+                          <button
+                            onClick={(e) => {
+                              if (actionMenuOpen === drive.id) {
+                                setActionMenuOpen(null);
+                                setMenuPosition(null);
+                              } else {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setMenuPosition({ top: rect.bottom + 4, left: rect.right - 180 });
+                                setActionMenuOpen(drive.id);
+                              }
+                            }}
+                            style={{
+                              padding: '8px',
+                              borderRadius: '8px',
+                              border: '1px solid #e5e7eb',
+                              backgroundColor: '#ffffff',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <MoreVertical style={{ width: '16px', height: '16px', color: '#6b7280' }} />
+                          </button>
                         </td>
                       </tr>
                     );
@@ -542,6 +471,103 @@ export default function RecruitmentPage() {
           )}
         </div>
       </div>
+
+      {/* Action Menu Popup */}
+      {actionMenuOpen && menuPosition && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+            onClick={() => { setActionMenuOpen(null); setMenuPosition(null); }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: menuPosition.top,
+              left: menuPosition.left,
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+              border: '1px solid #e5e7eb',
+              minWidth: '180px',
+              zIndex: 100,
+              padding: '4px 0',
+            }}
+          >
+            <button
+              onClick={() => {
+                const driveId = actionMenuOpen;
+                setActionMenuOpen(null);
+                setMenuPosition(null);
+                router.push(`/dashboard/my-drives?driveId=${driveId}`);
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                border: 'none',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: '#374151',
+              }}
+            >
+              <Eye style={{ width: '16px', height: '16px' }} />
+              View Details
+            </button>
+            {isHROrDirector && (
+              <>
+                <button
+                  onClick={() => {
+                    const drive = drives.find((d) => d.id === actionMenuOpen);
+                    if (drive) openAssignModal(drive);
+                    setMenuPosition(null);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                  }}
+                >
+                  <UserPlus style={{ width: '16px', height: '16px' }} />
+                  Assign Interviewers
+                </button>
+                <button
+                  onClick={() => {
+                    const driveId = actionMenuOpen;
+                    setActionMenuOpen(null);
+                    setMenuPosition(null);
+                    handleDeleteDrive(driveId);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#ef4444',
+                  }}
+                >
+                  <Trash2 style={{ width: '16px', height: '16px' }} />
+                  Delete Drive
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Create Drive Modal */}
       {showCreateModal && (

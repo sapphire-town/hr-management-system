@@ -72,7 +72,7 @@ export class RecruitmentController {
     if (!user.employeeId) {
       return [];
     }
-    return this.recruitmentService.getMyAssignedDrives(user.employeeId);
+    return this.recruitmentService.getMyAssignedDrives(user.employeeId, user.role);
   }
 
   @Get('drives/:id')
@@ -209,6 +209,7 @@ export class RecruitmentController {
       parseInt(round, 10),
       user.employeeId,
       dto,
+      user.role,
     );
   }
 

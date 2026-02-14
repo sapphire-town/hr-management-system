@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Calendar, FileText, AlertCircle, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
-import { leaveAPI } from '@/lib/api-client';
+import { leaveAPI, settingsAPI, attendanceAPI } from '@/lib/api-client';
 
 interface LeaveBalance {
   sick: number;
@@ -23,6 +23,7 @@ const defaultLeaveTypes = [
   { value: 'CASUAL', label: 'Casual Leave', maxDays: 12 },
   { value: 'SICK', label: 'Sick Leave', maxDays: 12 },
   { value: 'EARNED', label: 'Earned Leave', maxDays: 15 },
+  { value: 'UNPAID', label: 'Unpaid Leave', maxDays: null },
 ];
 
 export default function ApplyLeavePage() {
@@ -30,6 +31,8 @@ export default function ApplyLeavePage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [balance, setBalance] = React.useState<LeaveBalance | null>(null);
+  const [workingDays, setWorkingDays] = React.useState<number[]>([1, 2, 3, 4, 5]);
+  const [holidays, setHolidays] = React.useState<string[]>([]);
   const [formData, setFormData] = React.useState({
     leaveType: '',
     startDate: '',
@@ -38,31 +41,56 @@ export default function ApplyLeavePage() {
   });
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
-  // Fetch leave balance on mount
+  // Fetch leave balance, working days config, and holidays on mount
   React.useEffect(() => {
-    const fetchBalance = async () => {
+    const fetchData = async () => {
       try {
-        const response = await leaveAPI.getMyBalance();
-        setBalance(response.data);
+        const [balanceRes, settingsRes, holidaysRes] = await Promise.allSettled([
+          leaveAPI.getMyBalance(),
+          settingsAPI.getWorkingDays(),
+          attendanceAPI.getHolidays(new Date().getFullYear()),
+        ]);
+        if (balanceRes.status === 'fulfilled') {
+          setBalance(balanceRes.value.data);
+        }
+        if (settingsRes.status === 'fulfilled' && settingsRes.value.data?.workingDays) {
+          setWorkingDays(settingsRes.value.data.workingDays);
+        }
+        if (holidaysRes.status === 'fulfilled' && holidaysRes.value.data) {
+          setHolidays(holidaysRes.value.data.map((h: { date: string }) =>
+            new Date(h.date).toISOString().split('T')[0]
+          ));
+        }
       } catch (error) {
-        console.error('Error fetching balance:', error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
     };
-    fetchBalance();
+    fetchData();
   }, []);
 
   const calculateDays = () => {
     if (!formData.startDate || !formData.endDate) return 0;
     const start = new Date(formData.startDate);
     const end = new Date(formData.endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    return diffDays;
+    if (end < start) return 0;
+    let count = 0;
+    const current = new Date(start);
+    while (current <= end) {
+      const dayOfWeek = current.getDay();
+      const dateStr = current.toISOString().split('T')[0];
+      // Only count if it's a configured working day AND not a holiday
+      if (workingDays.includes(dayOfWeek) && !holidays.includes(dateStr)) {
+        count++;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return count;
   };
 
-  const getAvailableBalance = (leaveType: string): number => {
+  const getAvailableBalance = (leaveType: string): number | null => {
+    if (leaveType === 'UNPAID') return null; // Unlimited
     if (!balance) return 0;
     switch (leaveType) {
       case 'CASUAL': return balance.casual;
@@ -75,7 +103,7 @@ export default function ApplyLeavePage() {
   const selectedLeaveType = defaultLeaveTypes.find((lt) => lt.value === formData.leaveType);
   const requestedDays = calculateDays();
   const availableBalance = getAvailableBalance(formData.leaveType);
-  const hasInsufficientBalance = formData.leaveType !== '' && requestedDays > availableBalance;
+  const hasInsufficientBalance = formData.leaveType !== '' && formData.leaveType !== 'UNPAID' && availableBalance !== null && requestedDays > availableBalance;
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -268,7 +296,7 @@ export default function ApplyLeavePage() {
                     const available = getAvailableBalance(type.value);
                     return (
                       <option key={type.value} value={type.value}>
-                        {type.label} ({available} days available)
+                        {type.label} {available === null ? '(No balance limit)' : `(${available} days available)`}
                       </option>
                     );
                   })}
@@ -328,12 +356,14 @@ export default function ApplyLeavePage() {
                   )}
                   <div>
                     <p style={{ fontSize: '14px', fontWeight: 500, color: hasInsufficientBalance ? '#991b1b' : '#5b21b6', margin: 0 }}>
-                      {requestedDays} {requestedDays === 1 ? 'day' : 'days'} requested
+                      {requestedDays} working {requestedDays === 1 ? 'day' : 'days'} requested
                     </p>
                     <p style={{ fontSize: '12px', color: hasInsufficientBalance ? '#b91c1c' : '#7c3aed', margin: 0, marginTop: '2px' }}>
                       {hasInsufficientBalance
                         ? `Only ${availableBalance} days available`
-                        : `${availableBalance - requestedDays} days will remain after approval`}
+                        : availableBalance !== null
+                          ? `${availableBalance - requestedDays} days will remain after approval`
+                          : 'Unpaid leave — no balance deduction'}
                     </p>
                   </div>
                 </div>

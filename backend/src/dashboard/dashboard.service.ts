@@ -601,7 +601,7 @@ export class DashboardService {
   }
 
   private async getLeaveChartData(role: UserRole, employeeId?: string) {
-    const leaveTypes = ['SICK', 'CASUAL', 'EARNED'];
+    const leaveTypes = ['SICK', 'CASUAL', 'EARNED', 'UNPAID'];
     const result = [];
 
     for (const type of leaveTypes) {

@@ -595,6 +595,18 @@ export class NotificationService {
     }
   }
 
+  private stripHtml(html: string): string {
+    return html
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   private async createNotification(recipientEmail: string, subject: string, message: string, type: string) {
     try {
       // Look up user by email to get user ID
@@ -618,7 +630,7 @@ export class NotificationService {
         data: {
           recipientId: user.id,
           subject,
-          message,
+          message: this.stripHtml(message),
           type: typeMap[type] || NotificationType.WELCOME,
           channel: NotificationChannel.EMAIL,
           sentAt: new Date(),

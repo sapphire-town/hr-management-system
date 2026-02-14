@@ -23,8 +23,10 @@ import {
   Upload,
   Download,
   FileSpreadsheet,
+  Trash2,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -95,6 +97,8 @@ const statusConfig = {
 
 export default function MyDrivesPage() {
   const { user } = useAuthStore();
+  const searchParams = useSearchParams();
+  const isHROrDirector = user?.role === 'HR_HEAD' || user?.role === 'DIRECTOR';
   const [drives, setDrives] = React.useState<PlacementDrive[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selectedDrive, setSelectedDrive] = React.useState<PlacementDrive | null>(null);
@@ -143,6 +147,17 @@ export default function MyDrivesPage() {
   React.useEffect(() => {
     fetchMyDrives();
   }, [fetchMyDrives]);
+
+  // Auto-select drive from query param (e.g., when navigating from recruitment page)
+  React.useEffect(() => {
+    const driveId = searchParams.get('driveId');
+    if (driveId && drives.length > 0 && !selectedDrive) {
+      const drive = drives.find((d) => d.id === driveId);
+      if (drive) {
+        handleSelectDrive(drive);
+      }
+    }
+  }, [drives, searchParams]);
 
   const fetchStudents = async (driveId: string) => {
     try {
@@ -256,6 +271,21 @@ export default function MyDrivesPage() {
     }
   };
 
+  const handleDeleteStudent = async (studentId: string, studentName: string) => {
+    if (!confirm(`Are you sure you want to delete student "${studentName}"? This will also delete all evaluations.`)) return;
+    try {
+      await recruitmentAPI.deleteStudent(studentId);
+      if (selectedDrive) {
+        await fetchStudents(selectedDrive.id);
+      }
+      if (selectedStudent?.id === studentId) {
+        setSelectedStudent(null);
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to delete student');
+    }
+  };
+
   const handleDownloadTemplate = async () => {
     try {
       const response = await recruitmentAPI.downloadStudentTemplate();
@@ -337,8 +367,8 @@ export default function MyDrivesPage() {
 
   return (
     <DashboardLayout
-      title={selectedDrive ? selectedDrive.collegeName : 'My Assigned Drives'}
-      description={selectedDrive ? 'View students and submit evaluations' : 'View placement drives assigned to you'}
+      title={selectedDrive ? selectedDrive.collegeName : isHROrDirector ? 'All Placement Drives' : 'My Assigned Drives'}
+      description={selectedDrive ? 'Manage students and evaluations' : isHROrDirector ? 'View and manage all placement drives' : 'View placement drives assigned to you'}
       actions={
         selectedDrive && (
           <div style={{ display: 'flex', gap: 8 }}>
@@ -395,10 +425,10 @@ export default function MyDrivesPage() {
               <div style={{ padding: '60px', textAlign: 'center' }}>
                 <Building2 style={{ height: '48px', width: '48px', color: '#d1d5db', margin: '0 auto 16px' }} />
                 <p style={{ fontSize: '16px', color: '#6b7280', margin: 0 }}>
-                  No placement drives assigned to you yet
+                  {isHROrDirector ? 'No placement drives created yet' : 'No placement drives assigned to you yet'}
                 </p>
                 <p style={{ fontSize: '14px', color: '#9ca3af', marginTop: '8px' }}>
-                  HR will assign you to placement drives for interviewing
+                  {isHROrDirector ? 'Create a drive from the Recruitment page' : 'HR will assign you to placement drives for interviewing'}
                 </p>
               </div>
             </div>
@@ -571,6 +601,11 @@ export default function MyDrivesPage() {
                         <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
                           Round 2
                         </th>
+                        {isHROrDirector && (
+                          <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
+                            Actions
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -669,6 +704,29 @@ export default function MyDrivesPage() {
                                 <span style={{ fontSize: '12px', color: '#9ca3af' }}>Pending</span>
                               )}
                             </td>
+                            {isHROrDirector && (
+                              <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteStudent(student.id, student.name);
+                                  }}
+                                  style={{
+                                    padding: '6px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #fee2e2',
+                                    backgroundColor: '#fff5f5',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                  title="Delete student"
+                                >
+                                  <Trash2 style={{ width: '14px', height: '14px', color: '#ef4444' }} />
+                                </button>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}

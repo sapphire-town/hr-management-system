@@ -28,9 +28,10 @@ export class CreateEmployeeDto {
   @IsEnum(UserRole)
   role: UserRole;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
-  roleId: string;
+  roleId?: string;
 
   @ApiProperty()
   @IsNumber()

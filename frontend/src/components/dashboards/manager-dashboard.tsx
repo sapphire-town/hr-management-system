@@ -14,7 +14,7 @@ import {
   ChevronRight,
   Loader2,
 } from 'lucide-react';
-import { employeeAPI, leaveAPI, reportAPI } from '@/lib/api-client';
+import { employeeAPI, leaveAPI, dailyReportAPI } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
 
 interface TeamMember {
@@ -112,7 +112,7 @@ export function ManagerDashboard() {
 
         // Fetch pending leave requests
         try {
-          const leavesRes = await leaveAPI.getForApproval();
+          const leavesRes = await leaveAPI.getPendingForManager();
           const pending = (leavesRes.data || []).filter((l: any) => l.status === 'PENDING');
           setPendingLeaves(pending.slice(0, 5));
           setStats(prev => ({ ...prev, pendingLeaveCount: pending.length }));
@@ -122,7 +122,7 @@ export function ManagerDashboard() {
 
         // Fetch pending reports
         try {
-          const reportsRes = await reportAPI.getPendingTeamReports();
+          const reportsRes = await dailyReportAPI.getPendingTeamReports();
           const reports = reportsRes.data || [];
           setPendingReports(reports.slice(0, 5));
           setStats(prev => ({ ...prev, pendingReportCount: reports.length }));

@@ -255,7 +255,7 @@ const resetFormData = React.useCallback(() => {
     firstName: '',
     lastName: '',
     role: 'EMPLOYEE',
-    roleId: roles.length > 0 ? roles[0].id : '',
+    roleId: '',
     salary: '',
     dateOfBirth: '',
     gender: '',
@@ -271,19 +271,7 @@ const resetFormData = React.useCallback(() => {
 }, [roles]);
 
 
-  // Update roleId when roles are loaded and form is empty
-  React.useEffect(() => {
-    if (roles.length > 0 && !formData.roleId) {
-      setFormData(prev => ({ ...prev, roleId: roles[0].id }));
-    }
-  }, [roles, formData.roleId]);
-
   const handleAddEmployee = async () => {
-    // Validate roleId before submitting
-    if (!formData.roleId) {
-      alert('Please select a role');
-      return;
-    }
     if (!formData.salary || parseFloat(formData.salary) <= 0) {
       alert('Please enter a valid salary');
       return;
@@ -296,7 +284,7 @@ const resetFormData = React.useCallback(() => {
       firstName: formData.firstName,
       lastName: formData.lastName,
       role: formData.role,
-      roleId: formData.roleId,
+      roleId: formData.roleId || undefined,
       salary: parseFloat(formData.salary),
       employeeType: formData.employeeType,
       joinDate: formData.joinDate || undefined,
@@ -664,15 +652,6 @@ const resetFormData = React.useCallback(() => {
           <>
             <Button
               variant="outline"
-              onClick={() => router.push('/dashboard/roles')}
-              style={{ marginRight: 8 }}
-            >
-              <Award style={{ width: 16, height: 16, marginRight: 8 }} />
-              Manage Roles
-            </Button>
-
-            <Button
-              variant="outline"
               onClick={() => setShowBulkImportModal(true)}
               style={{ marginRight: 8 }}
             >
@@ -879,7 +858,7 @@ const resetFormData = React.useCallback(() => {
                     Department
                   </th>
                   <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Access Level
+                    Role
                   </th>
                   <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Reports To
@@ -1161,9 +1140,9 @@ const resetFormData = React.useCallback(() => {
               />
             </div>
             <div>
-              <Label>Access Level *</Label>
+              <Label>Role *</Label>
               <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                 <SelectContent>
                   {USER_ROLES.map((r) => (
                     <SelectItem key={r} value={r}>{r.replace('_', ' ')}</SelectItem>
@@ -1186,19 +1165,20 @@ const resetFormData = React.useCallback(() => {
               />
             </div>
             <div>
-              <Label>Role *</Label>
+              <Label>Department</Label>
               {roles.length > 0 ? (
-                <Select value={formData.roleId} onValueChange={(v) => setFormData({ ...formData, roleId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
+                <Select value={formData.roleId || 'none'} onValueChange={(v) => setFormData({ ...formData, roleId: v === 'none' ? '' : v })}>
+                  <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
                     {roles.map((r) => (
                       <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               ) : (
-                <div style={{ padding: '8px', background: '#fef3cd', borderRadius: 4, fontSize: 13, color: '#856404' }}>
-                  No roles available. Please create roles first in Role Management.
+                <div style={{ padding: '8px', background: '#f3f4f6', borderRadius: 4, fontSize: 13, color: '#6b7280' }}>
+                  No departments available.
                 </div>
               )}
             </div>
@@ -1313,9 +1293,9 @@ const resetFormData = React.useCallback(() => {
             <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancel</Button>
             <Button
               onClick={handleAddEmployee}
-              disabled={submitting || !formData.email || !formData.firstName || !formData.lastName || !formData.roleId || !formData.salary || roles.length === 0}
+              disabled={submitting || !formData.email || !formData.firstName || !formData.lastName || !formData.salary}
             >
-              {submitting ? 'Creating...' : roles.length === 0 ? 'Loading...' : 'Create Employee'}
+              {submitting ? 'Creating...' : 'Create Employee'}
             </Button>
           </DialogFooter>
         </DialogContent>

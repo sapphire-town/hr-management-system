@@ -19,6 +19,16 @@ import { AttendanceStatus } from '@prisma/client';
 export class AttendanceService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Get configured working days from CompanySettings.
+   * Returns array of day numbers (0=Sun, 1=Mon, ..., 6=Sat).
+   * Defaults to [1,2,3,4,5] (Mon-Fri) if not configured.
+   */
+  private async getWorkingDays(): Promise<number[]> {
+    const settings = await this.prisma.companySettings.findFirst();
+    return (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+  }
+
   async markAttendance(employeeId: string, dto: MarkAttendanceDto) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -259,6 +269,7 @@ export class AttendanceService {
       absent: 0,
       halfDay: 0,
       paidLeave: 0,
+      unpaidLeave: 0,
       holiday: 0,
       total: records.length,
     };
@@ -277,6 +288,9 @@ export class AttendanceService {
           break;
         case AttendanceStatus.PAID_LEAVE:
           summary.paidLeave++;
+          break;
+        case AttendanceStatus.UNPAID_LEAVE:
+          summary.unpaidLeave++;
           break;
         case AttendanceStatus.OFFICIAL_HOLIDAY:
           summary.holiday++;
@@ -484,6 +498,7 @@ export class AttendanceService {
   async getCalendarWithHolidays(employeeId: string, month: number, year: number) {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
+    const workingDays = await this.getWorkingDays();
 
     const [attendanceRecords, holidays, approvedLeaves] = await Promise.all([
       this.prisma.attendance.findMany({
@@ -536,8 +551,8 @@ export class AttendanceService {
       const leaveEnd = new Date(Math.min(leave.endDate.getTime(), endDate.getTime()));
       for (let d = new Date(leaveStart); d <= leaveEnd; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.getDay();
-        // Skip weekends
-        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+        // Skip non-working days
+        if (!workingDays.includes(dayOfWeek)) continue;
         const dStr = d.toISOString().split('T')[0];
         // Skip holidays
         if (holidayMap.has(dStr)) continue;
@@ -553,7 +568,7 @@ export class AttendanceService {
       const date = new Date(year, month - 1, day);
       const dateStr = date.toISOString().split('T')[0];
       const dayOfWeek = date.getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isWeekend = !workingDays.includes(dayOfWeek);
 
       const attendance = attendanceMap.get(dateStr);
       const holiday = holidayMap.get(dateStr);
@@ -590,15 +605,16 @@ export class AttendanceService {
   }
 
   // Scheduled: Auto-mark absent employees at end of each working day (11 PM)
-  @Cron('0 23 * * 1-5') // Mon-Fri at 11 PM
+  @Cron('0 23 * * *') // Runs every day at 11 PM, checks working days from config
   async autoMarkAbsentees(): Promise<void> {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const dayOfWeek = today.getDay();
-      // Skip weekends (safety check, cron already limits to Mon-Fri)
-      if (dayOfWeek === 0 || dayOfWeek === 6) return;
+      // Skip non-working days based on company settings
+      const workingDays = await this.getWorkingDays();
+      if (!workingDays.includes(dayOfWeek)) return;
 
       // Check if today is an official holiday
       const holiday = await this.prisma.officialHoliday.findFirst({

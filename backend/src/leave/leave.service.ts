@@ -21,15 +21,17 @@ export class LeaveService {
   ) {}
 
   async apply(employeeId: string, dto: ApplyLeaveDto) {
-    // First check if employee is an intern - interns cannot apply for paid leave
+    const isUnpaid = dto.leaveType === LeaveType.UNPAID;
+
+    // First check if employee is an intern - interns can only apply for unpaid leave
     const employeeCheck = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       select: { employeeType: true },
     });
 
-    if (employeeCheck?.employeeType === 'INTERN') {
+    if (employeeCheck?.employeeType === 'INTERN' && !isUnpaid) {
       throw new ForbiddenException(
-        'Interns are not eligible for paid leave. Please contact your manager for unpaid leave arrangements.',
+        'Interns are not eligible for paid leave. Please apply for unpaid leave.',
       );
     }
 
@@ -62,7 +64,7 @@ export class LeaveService {
       throw new BadRequestException('You already have a leave request for overlapping dates');
     }
 
-    // Check leave balance
+    // Check leave balance (skip for unpaid leave)
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       include: {
@@ -77,15 +79,17 @@ export class LeaveService {
       throw new NotFoundException('Employee not found');
     }
 
-    const balanceField = `${dto.leaveType.toLowerCase()}LeaveBalance` as
-      | 'sickLeaveBalance'
-      | 'casualLeaveBalance'
-      | 'earnedLeaveBalance';
+    if (!isUnpaid) {
+      const balanceField = `${dto.leaveType.toLowerCase()}LeaveBalance` as
+        | 'sickLeaveBalance'
+        | 'casualLeaveBalance'
+        | 'earnedLeaveBalance';
 
-    if (employee[balanceField] < workingDays) {
-      throw new BadRequestException(
-        `Insufficient ${dto.leaveType.toLowerCase()} leave balance. Available: ${employee[balanceField]}, Requested: ${workingDays}`,
-      );
+      if (employee[balanceField] < workingDays) {
+        throw new BadRequestException(
+          `Insufficient ${dto.leaveType.toLowerCase()} leave balance. Available: ${employee[balanceField]}, Requested: ${workingDays}`,
+        );
+      }
     }
 
     const leave = await this.prisma.leave.create({
@@ -97,6 +101,7 @@ export class LeaveService {
         numberOfDays: workingDays,
         reason: dto.reason,
         status: LeaveStatus.PENDING_MANAGER,
+        isPaid: !isUnpaid,
       },
       include: {
         employee: {
@@ -307,20 +312,22 @@ export class LeaveService {
         throw new BadRequestException('Leave is not pending HR approval');
       }
 
-      // Deduct leave balance
-      const days = leave.numberOfDays;
+      // Deduct leave balance (skip for unpaid leave)
+      if (leave.leaveType !== LeaveType.UNPAID) {
+        const days = leave.numberOfDays;
 
-      const balanceField = `${leave.leaveType.toLowerCase()}LeaveBalance` as
-        | 'sickLeaveBalance'
-        | 'casualLeaveBalance'
-        | 'earnedLeaveBalance';
+        const balanceField = `${leave.leaveType.toLowerCase()}LeaveBalance` as
+          | 'sickLeaveBalance'
+          | 'casualLeaveBalance'
+          | 'earnedLeaveBalance';
 
-      await this.prisma.employee.update({
-        where: { id: leave.employeeId },
-        data: {
-          [balanceField]: { decrement: days },
-        },
-      });
+        await this.prisma.employee.update({
+          where: { id: leave.employeeId },
+          data: {
+            [balanceField]: { decrement: days },
+          },
+        });
+      }
 
       const updatedLeave = await this.prisma.leave.update({
         where: { id: leaveId },
@@ -330,7 +337,7 @@ export class LeaveService {
         },
       });
 
-      // Create PAID_LEAVE attendance records for each working day of the leave
+      // Create attendance records for each working day of the leave
       await this.createLeaveAttendanceRecords(leave);
 
       // Send notification to employee
@@ -354,7 +361,8 @@ export class LeaveService {
   }
 
   /**
-   * Create PAID_LEAVE attendance records for each working day of an approved leave.
+   * Create leave attendance records for each working day of an approved leave.
+   * Uses PAID_LEAVE for paid leave types, UNPAID_LEAVE for unpaid leave.
    * Skips weekends, holidays, and days that already have attendance records.
    */
   private async createLeaveAttendanceRecords(leave: {
@@ -374,6 +382,10 @@ export class LeaveService {
       // Fetch configured working days from CompanySettings
       const settings = await this.prisma.companySettings.findFirst();
       const configuredWorkingDays: number[] = (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+
+      const attendanceStatus = leave.leaveType === LeaveType.UNPAID
+        ? AttendanceStatus.UNPAID_LEAVE
+        : AttendanceStatus.PAID_LEAVE;
 
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.getDay();
@@ -400,7 +412,7 @@ export class LeaveService {
             data: {
               employeeId: leave.employeeId,
               date: dateForRecord,
-              status: AttendanceStatus.PAID_LEAVE,
+              status: attendanceStatus,
               markedBy: 'SYSTEM',
               notes: `${leave.leaveType} Leave (Auto-recorded from approved leave request)`,
             },
@@ -590,6 +602,7 @@ export class LeaveService {
       sick: leaves.filter(l => l.leaveType === LeaveType.SICK),
       casual: leaves.filter(l => l.leaveType === LeaveType.CASUAL),
       earned: leaves.filter(l => l.leaveType === LeaveType.EARNED),
+      unpaid: leaves.filter(l => l.leaveType === LeaveType.UNPAID),
     };
 
     // Total days by type
@@ -597,6 +610,7 @@ export class LeaveService {
       sick: byType.sick.reduce((sum, l) => sum + l.numberOfDays, 0),
       casual: byType.casual.reduce((sum, l) => sum + l.numberOfDays, 0),
       earned: byType.earned.reduce((sum, l) => sum + l.numberOfDays, 0),
+      unpaid: byType.unpaid.reduce((sum, l) => sum + l.numberOfDays, 0),
     };
 
     // Approval rate
@@ -628,8 +642,9 @@ export class LeaveService {
         sick: { count: byType.sick.length, totalDays: totalDaysByType.sick },
         casual: { count: byType.casual.length, totalDays: totalDaysByType.casual },
         earned: { count: byType.earned.length, totalDays: totalDaysByType.earned },
+        unpaid: { count: byType.unpaid.length, totalDays: totalDaysByType.unpaid },
       },
-      totalDaysOff: totalDaysByType.sick + totalDaysByType.casual + totalDaysByType.earned,
+      totalDaysOff: totalDaysByType.sick + totalDaysByType.casual + totalDaysByType.earned + totalDaysByType.unpaid,
     };
   }
 
@@ -678,6 +693,10 @@ export class LeaveService {
         .filter(l => l.leaveType === LeaveType.EARNED)
         .reduce((sum, l) => sum + l.numberOfDays, 0);
 
+      const unpaidDays = emp.leaves
+        .filter(l => l.leaveType === LeaveType.UNPAID)
+        .reduce((sum, l) => sum + l.numberOfDays, 0);
+
       return {
         employeeId: emp.id,
         employeeName: `${emp.firstName} ${emp.lastName}`,
@@ -686,7 +705,8 @@ export class LeaveService {
           sick: sickDays,
           casual: casualDays,
           earned: earnedDays,
-          total: sickDays + casualDays + earnedDays,
+          unpaid: unpaidDays,
+          total: sickDays + casualDays + earnedDays + unpaidDays,
         },
         balanceRemaining: {
           sick: emp.sickLeaveBalance,
@@ -836,6 +856,7 @@ export class LeaveService {
           sick: allLeaves.filter(l => l.leaveType === LeaveType.SICK).length,
           casual: allLeaves.filter(l => l.leaveType === LeaveType.CASUAL).length,
           earned: allLeaves.filter(l => l.leaveType === LeaveType.EARNED).length,
+          unpaid: allLeaves.filter(l => l.leaveType === LeaveType.UNPAID).length,
         },
       };
     });

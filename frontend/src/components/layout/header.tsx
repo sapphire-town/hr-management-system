@@ -253,7 +253,7 @@ export function Header() {
                       )}
                     </div>
                     <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-                      {notification.message}
+                      {notification.message.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()}
                     </span>
                     <span style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
                       {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}

@@ -23,13 +23,17 @@ import {
   eachWeekOfInterval,
   eachMonthOfInterval,
   format,
-  isWeekend,
   eachDayOfInterval,
 } from 'date-fns';
 
 @Injectable()
 export class PerformanceService {
   constructor(private prisma: PrismaService) {}
+
+  private async getConfiguredWorkingDays(): Promise<number[]> {
+    const settings = await this.prisma.companySettings.findFirst();
+    return (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+  }
 
   private getDateRange(period: PerformancePeriod, startDate?: string, endDate?: string) {
     const now = new Date();
@@ -52,9 +56,10 @@ export class PerformanceService {
     }
   }
 
-  private getWorkingDays(startDate: Date, endDate: Date): number {
+  private async getWorkingDaysCount(startDate: Date, endDate: Date): Promise<number> {
+    const configuredWorkingDays = await this.getConfiguredWorkingDays();
     const days = eachDayOfInterval({ start: startDate, end: endDate });
-    return days.filter(day => !isWeekend(day)).length;
+    return days.filter(day => configuredWorkingDays.includes(day.getDay())).length;
   }
 
   private calculateAttendanceScore(present: number, halfDays: number, workingDays: number): number {
@@ -141,7 +146,7 @@ export class PerformanceService {
       },
     });
 
-    const workingDays = this.getWorkingDays(start, end) - holidays.length;
+    const workingDays = await this.getWorkingDaysCount(start, end) - holidays.length;
 
     const presentDays = attendanceRecords.filter(a => a.status === 'PRESENT').length;
     const halfDays = attendanceRecords.filter(a => a.status === 'HALF_DAY').length;
@@ -178,7 +183,7 @@ export class PerformanceService {
       },
     });
 
-    const prevWorkingDays = this.getWorkingDays(previousStart, previousEnd);
+    const prevWorkingDays = await this.getWorkingDaysCount(previousStart, previousEnd);
     const prevPresent = previousAttendance.filter(a => a.status === 'PRESENT').length;
     const prevHalfDays = previousAttendance.filter(a => a.status === 'HALF_DAY').length;
     const prevAttendanceScore = this.calculateAttendanceScore(prevPresent, prevHalfDays, prevWorkingDays);
@@ -383,7 +388,7 @@ export class PerformanceService {
       const monthEnd = endOfMonth(subMonths(now, i));
 
       const employees = await this.prisma.employee.findMany();
-      const workingDays = this.getWorkingDays(monthStart, monthEnd);
+      const workingDays = await this.getWorkingDaysCount(monthStart, monthEnd);
 
       let totalScore = 0;
       let totalAttendanceRate = 0;
@@ -509,7 +514,7 @@ export class PerformanceService {
         },
       });
 
-      const workingDays = this.getWorkingDays(monthStart, monthEnd);
+      const workingDays = await this.getWorkingDaysCount(monthStart, monthEnd);
       const present = attendance.filter(a => a.status === 'PRESENT').length;
       const halfDays = attendance.filter(a => a.status === 'HALF_DAY').length;
       const leaves = attendance.filter(a => a.status === 'PAID_LEAVE').length;

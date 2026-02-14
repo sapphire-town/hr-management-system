@@ -270,13 +270,15 @@ export class RecruitmentService {
     });
   }
 
-  async getMyAssignedDrives(interviewerId: string) {
+  async getMyAssignedDrives(interviewerId: string, userRole?: UserRole) {
+    // HR_HEAD and DIRECTOR can see all drives
+    const whereClause =
+      userRole === UserRole.HR_HEAD || userRole === UserRole.DIRECTOR
+        ? {}
+        : { interviewers: { some: { interviewerId } } };
+
     return this.prisma.placementDrive.findMany({
-      where: {
-        interviewers: {
-          some: { interviewerId },
-        },
-      },
+      where: whereClause,
       include: {
         interviewers: {
           include: {
@@ -365,6 +367,7 @@ export class RecruitmentService {
     roundNumber: number,
     evaluatorId: string,
     dto: EvaluateStudentDto,
+    userRole?: UserRole,
   ) {
     const student = await this.prisma.student.findUnique({
       where: { id: studentId },
@@ -375,16 +378,21 @@ export class RecruitmentService {
       throw new NotFoundException('Student not found');
     }
 
-    // Check if evaluator is assigned to this drive
-    const isAssigned = await this.prisma.placementDriveInterviewer.findFirst({
-      where: {
-        driveId: student.driveId,
-        interviewerId: evaluatorId,
-      },
-    });
+    // HR_HEAD and DIRECTOR can evaluate without being assigned to the drive
+    const isPrivileged = userRole === UserRole.HR_HEAD || userRole === UserRole.DIRECTOR;
 
-    if (!isAssigned) {
-      throw new BadRequestException('You are not assigned to this placement drive');
+    if (!isPrivileged) {
+      // Check if evaluator is assigned to this drive
+      const isAssigned = await this.prisma.placementDriveInterviewer.findFirst({
+        where: {
+          driveId: student.driveId,
+          interviewerId: evaluatorId,
+        },
+      });
+
+      if (!isAssigned) {
+        throw new BadRequestException('You are not assigned to this placement drive');
+      }
     }
 
     // For round 2, check if round 1 passed

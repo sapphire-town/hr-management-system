@@ -64,6 +64,15 @@ export class SettingsController {
     return this.settingsService.getSettings();
   }
 
+  @Get('working-days')
+  @ApiOperation({ summary: 'Get configured working days (all authenticated users)' })
+  async getWorkingDays() {
+    const settings = await this.settingsService.getSettings();
+    return {
+      workingDays: settings.workingDays ?? [1, 2, 3, 4, 5],
+    };
+  }
+
   @Get('payslip-template')
   @ApiOperation({ summary: 'Get payslip template config (all authenticated users)' })
   async getPayslipTemplate() {

@@ -21,6 +21,11 @@ const monthlyWorkingDaysModel = (prisma: PrismaService) =>
 export class PayrollService {
   constructor(private prisma: PrismaService) {}
 
+  private async getConfiguredWorkingDays(): Promise<number[]> {
+    const settings = await this.prisma.companySettings.findFirst();
+    return (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+  }
+
   // ==================== AUTO-GENERATION CRON ====================
 
   /**
@@ -291,9 +296,10 @@ export class PayrollService {
           }
         } else if (
           status === AttendanceStatus.ABSENT ||
-          status === AttendanceStatus.ABSENT_DOUBLE_DEDUCTION
+          status === AttendanceStatus.ABSENT_DOUBLE_DEDUCTION ||
+          status === AttendanceStatus.UNPAID_LEAVE
         ) {
-          consecutiveDays = 0; // Reset streak on absence
+          consecutiveDays = 0; // Reset streak on absence or unpaid leave
         }
         // OFFICIAL_HOLIDAY doesn't break or advance streak
       }
@@ -439,14 +445,15 @@ export class PayrollService {
     );
 
     let workingDays = 0;
+    const configuredWorkingDays = await this.getConfiguredWorkingDays();
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day);
       const dayOfWeek = date.getDay();
       const dateStr = date.toISOString().split('T')[0];
 
-      // Skip weekends (0 = Sunday, 6 = Saturday)
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
+      // Skip non-working days based on company settings
+      if (!configuredWorkingDays.includes(dayOfWeek)) {
         continue;
       }
 
@@ -510,6 +517,9 @@ export class PayrollService {
         case AttendanceStatus.PAID_LEAVE:
         case AttendanceStatus.OFFICIAL_HOLIDAY:
           actualWorkingDays += 1; // Paid leave counts as working day
+          break;
+        case AttendanceStatus.UNPAID_LEAVE:
+          // Unpaid leave - does NOT count as working day (salary deducted)
           break;
         case AttendanceStatus.ABSENT:
           // Regular absence
@@ -624,8 +634,8 @@ export class PayrollService {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
 
-    // Fetch attendance records and holidays for the month
-    const [attendanceRecords, holidays] = await Promise.all([
+    // Fetch attendance records, holidays, and configured working days for the month
+    const [attendanceRecords, holidays, configuredWorkingDays] = await Promise.all([
       this.prisma.attendance.findMany({
         where: {
           employeeId,
@@ -637,6 +647,7 @@ export class PayrollService {
           date: { gte: startDate, lte: endDate },
         },
       }),
+      this.getConfiguredWorkingDays(),
     ]);
 
     // Build lookup maps
@@ -649,7 +660,7 @@ export class PayrollService {
 
     const isNonWorkingDay = (d: Date): boolean => {
       const dow = d.getDay();
-      if (dow === 0 || dow === 6) return true;
+      if (!configuredWorkingDays.includes(dow)) return true;
       return holidayDates.has(d.toISOString().split('T')[0]);
     };
 

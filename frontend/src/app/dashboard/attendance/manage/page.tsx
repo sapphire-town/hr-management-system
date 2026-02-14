@@ -20,7 +20,7 @@ import { Modal } from '@/components/ui/modal';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/store/auth-store';
-import { attendanceAPI } from '@/lib/api-client';
+import { attendanceAPI, settingsAPI } from '@/lib/api-client';
 import { format } from 'date-fns';
 
 interface Holiday {
@@ -44,6 +44,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
   HALF_DAY: { bg: '#fef3c7', text: '#92400e', label: 'Half Day' },
   ABSENT: { bg: '#fee2e2', text: '#991b1b', label: 'Absent' },
   PAID_LEAVE: { bg: '#dbeafe', text: '#1e40af', label: 'Paid Leave' },
+  UNPAID_LEAVE: { bg: '#e5e7eb', text: '#374151', label: 'Unpaid Leave' },
   ABSENT_DOUBLE_DEDUCTION: { bg: '#fecaca', text: '#7f1d1d', label: 'Absent (2x)' },
   OFFICIAL_HOLIDAY: { bg: '#f3e8ff', text: '#6b21a8', label: 'Holiday' },
   NOT_MARKED: { bg: '#f3f4f6', text: '#6b7280', label: 'Not Marked' },
@@ -108,16 +109,21 @@ function HRManageView() {
   const [holidayForm, setHolidayForm] = React.useState({ date: '', name: '', description: '' });
   const [overrideModalOpen, setOverrideModalOpen] = React.useState(false);
   const [overrideEmployee, setOverrideEmployee] = React.useState<EmployeeAttendance | null>(null);
+  const [workingDays, setWorkingDays] = React.useState<number[]>([1, 2, 3, 4, 5]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [empRes, holRes] = await Promise.all([
+      const [empRes, holRes, settingsRes] = await Promise.all([
         attendanceAPI.getAllEmployeesAttendance(selectedDate),
         attendanceAPI.getHolidays(new Date(selectedDate).getFullYear()),
+        settingsAPI.getWorkingDays(),
       ]);
       setEmployees(empRes.data || []);
       setHolidays(holRes.data || []);
+      if (settingsRes.data?.workingDays) {
+        setWorkingDays(settingsRes.data.workingDays);
+      }
     } catch (error) {
       console.error('Error fetching attendance data:', error);
     } finally {
@@ -257,6 +263,7 @@ function HRManageView() {
     halfDay: employees.filter((e) => e.status === 'HALF_DAY').length,
     absent: employees.filter((e) => e.status === 'ABSENT' || e.status === 'ABSENT_DOUBLE_DEDUCTION').length,
     paidLeave: employees.filter((e) => e.status === 'PAID_LEAVE').length,
+    unpaidLeave: employees.filter((e) => e.status === 'UNPAID_LEAVE').length,
     notMarked: employees.filter((e) => e.status === 'NOT_MARKED').length,
   };
 
@@ -266,7 +273,7 @@ function HRManageView() {
   });
 
   const selectedDow = new Date(selectedDate).getDay();
-  const isWeekend = selectedDow === 0 || selectedDow === 6;
+  const isWeekend = !workingDays.includes(selectedDow);
 
   const selMonth = new Date(selectedDate).getMonth();
   const selYear = new Date(selectedDate).getFullYear();
@@ -326,6 +333,7 @@ function HRManageView() {
           { label: 'Half Day', value: stats.halfDay, color: '#f59e0b' },
           { label: 'Absent', value: stats.absent, color: '#ef4444' },
           { label: 'Paid Leave', value: stats.paidLeave, color: '#3b82f6' },
+          { label: 'Unpaid Leave', value: stats.unpaidLeave, color: '#9ca3af' },
           { label: 'Not Marked', value: stats.notMarked, color: '#6b7280' },
         ].map((s) => (
           <div key={s.label} style={{ ...cardStyle, padding: '16px', borderLeft: `4px solid ${s.color}` }}>
@@ -354,6 +362,7 @@ function HRManageView() {
           <option value="ABSENT">Absent</option>
           <option value="ABSENT_DOUBLE_DEDUCTION">Absent (Double)</option>
           <option value="PAID_LEAVE">Paid Leave</option>
+          <option value="UNPAID_LEAVE">Unpaid Leave</option>
           <option value="NOT_MARKED">Not Marked</option>
         </select>
       </div>
@@ -584,6 +593,7 @@ function OverrideWithNotesModal({
             <option value="HALF_DAY">Half Day</option>
             <option value="ABSENT">Absent</option>
             <option value="PAID_LEAVE">Paid Leave</option>
+            <option value="UNPAID_LEAVE">Unpaid Leave</option>
             <option value="ABSENT_DOUBLE_DEDUCTION">Absent (Double Deduction)</option>
           </select>
         </div>

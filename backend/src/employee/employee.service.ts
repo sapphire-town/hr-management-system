@@ -72,7 +72,7 @@ export class EmployeeService {
           userId: user.id,
           firstName: dto.firstName,
           lastName: dto.lastName,
-          roleId: dto.roleId,
+          roleId: dto.roleId || undefined,
           salary: dto.salary,
           dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
           gender: dto.gender,

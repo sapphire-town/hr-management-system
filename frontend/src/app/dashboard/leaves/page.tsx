@@ -16,7 +16,7 @@ interface Leave {
     user?: { email: string };
     manager?: { firstName: string; lastName: string };
   };
-  leaveType: 'CASUAL' | 'SICK' | 'EARNED';
+  leaveType: 'CASUAL' | 'SICK' | 'EARNED' | 'UNPAID';
   startDate: string;
   endDate: string;
   numberOfDays: number;
@@ -51,6 +51,7 @@ const leaveTypeConfig: Record<string, { color: string; bg: string }> = {
   CASUAL: { color: '#2563eb', bg: '#dbeafe' },
   SICK: { color: '#dc2626', bg: '#fee2e2' },
   EARNED: { color: '#059669', bg: '#d1fae5' },
+  UNPAID: { color: '#6b7280', bg: '#f3f4f6' },
 };
 
 export default function LeavesPage() {

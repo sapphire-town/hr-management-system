@@ -472,6 +472,7 @@ export const hiringAPI = {
 
 export const settingsAPI = {
   getSettings: () => apiClient.get('/settings'),
+  getWorkingDays: () => apiClient.get('/settings/working-days'),
   updateCompany: (data: { companyName?: string; workingHoursStart?: string; workingHoursEnd?: string; workingDays?: number[] }) =>
     apiClient.patch('/settings/company', data),
   updateLeavePolicies: (data: { sickLeavePerYear?: number; casualLeavePerYear?: number; earnedLeavePerYear?: number; maxConsecutiveDays?: number; carryForwardAllowed?: boolean; maxCarryForward?: number }) =>
@@ -499,6 +500,14 @@ export const settingsAPI = {
     return `${apiClient.defaults.baseURL}/settings/logo/${filename}`;
   },
   getPayslipTemplate: () => apiClient.get('/settings/payslip-template'),
+};
+
+export const dashboardAPI = {
+  getStats: () => apiClient.get('/dashboard/stats'),
+  getActivities: (limit?: number) => apiClient.get('/dashboard/activities', { params: limit ? { limit } : {} }),
+  getPendingApprovals: () => apiClient.get('/dashboard/pending'),
+  getChartData: (type: string) => apiClient.get(`/dashboard/charts/${type}`),
+  getComprehensiveReports: () => apiClient.get('/dashboard/reports/comprehensive'),
 };
 
 export const targetAPI = {

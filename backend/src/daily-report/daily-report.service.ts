@@ -27,7 +27,6 @@ import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   startOfQuarter, endOfQuarter, startOfYear, endOfYear,
   eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval,
-  isWeekend,
 } from 'date-fns';
 
 @Injectable()
@@ -36,6 +35,11 @@ export class DailyReportService {
     private prisma: PrismaService,
     private notificationService: NotificationService,
   ) {}
+
+  private async getWorkingDays(): Promise<number[]> {
+    const settings = await this.prisma.companySettings.findFirst();
+    return (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+  }
 
   /**
    * Get the daily reporting parameters for an employee's role
@@ -443,12 +447,13 @@ export class DailyReportService {
       }),
     ]);
 
-    // Calculate working days in the period (rough estimate - Mon-Fri)
+    // Calculate working days in the period using configured working days
+    const configuredWorkingDays = await this.getWorkingDays();
     let workingDays = 0;
     const current = new Date(startDate);
     while (current <= endDate && current <= now) {
       const dayOfWeek = current.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      if (configuredWorkingDays.includes(dayOfWeek)) {
         workingDays++;
       }
       current.setDate(current.getDate() + 1);
@@ -519,18 +524,20 @@ export class DailyReportService {
   private async getWorkingDaysInRange(start: Date, end: Date): Promise<number> {
     const effectiveEnd = end > new Date() ? new Date() : end;
     if (effectiveEnd < start) return 0;
+    const configuredWorkingDays = await this.getWorkingDays();
     const holidays = await this.prisma.officialHoliday.findMany({
       where: { date: { gte: start, lte: effectiveEnd } },
     });
     const holidayDates = new Set(holidays.map(h => format(h.date, 'yyyy-MM-dd')));
     const allDays = eachDayOfInterval({ start, end: effectiveEnd });
-    return allDays.filter(d => !isWeekend(d) && !holidayDates.has(format(d, 'yyyy-MM-dd'))).length;
+    return allDays.filter(d => configuredWorkingDays.includes(d.getDay()) && !holidayDates.has(format(d, 'yyyy-MM-dd'))).length;
   }
 
   private getTimeBuckets(
     period: ReportPerformancePeriod,
     start: Date,
     end: Date,
+    configuredWorkingDays: number[] = [1, 2, 3, 4, 5],
   ): Array<{ label: string; start: Date; end: Date }> {
     const effectiveEnd = end > new Date() ? new Date() : end;
     if (effectiveEnd < start) return [];
@@ -539,7 +546,7 @@ export class DailyReportService {
       case ReportPerformancePeriod.WEEKLY: {
         // Each day is a bucket
         return eachDayOfInterval({ start, end: effectiveEnd })
-          .filter(d => !isWeekend(d))
+          .filter(d => configuredWorkingDays.includes(d.getDay()))
           .map(d => ({
             label: format(d, 'EEE M/d'),
             start: startOfDay(d),
@@ -639,7 +646,8 @@ export class DailyReportService {
     });
 
     // Time series buckets
-    const buckets = this.getTimeBuckets(period, start, end);
+    const configuredWorkingDays = await this.getWorkingDays();
+    const buckets = this.getTimeBuckets(period, start, end, configuredWorkingDays);
     const timeSeries: TimeBucketData[] = [];
 
     for (const bucket of buckets) {
@@ -804,11 +812,12 @@ export class DailyReportService {
   // CRON: Overdue report detection - runs at 6:30 PM on weekdays
   // ============================================================
 
-  @Cron('30 18 * * 1-5')
+  @Cron('30 18 * * *')
   async checkOverdueReports() {
     try {
       const today = startOfDay(new Date());
-      if (isWeekend(today)) return;
+      const configuredWorkingDays = await this.getWorkingDays();
+      if (!configuredWorkingDays.includes(today.getDay())) return;
 
       // Skip holidays
       const holiday = await this.prisma.officialHoliday.findFirst({

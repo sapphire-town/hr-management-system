@@ -62,6 +62,14 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       ],
     },
     {
+      title: 'Recruitment',
+      items: [
+        { label: 'Hiring Requests', href: '/dashboard/hiring', icon: UserPlus },
+        { label: 'Recruitment', href: '/dashboard/recruitment', icon: Search },
+        { label: 'My Drives', href: '/dashboard/my-drives', icon: Building2 },
+      ],
+    },
+    {
       title: 'Insights',
       items: [
         { label: 'Team Performance', href: '/dashboard/team-performance', icon: Users },
@@ -81,7 +89,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
         { label: 'Employees', href: '/dashboard/employees', icon: Users },
-        { label: 'Departments', href: '/dashboard/departments', icon: Building2 },
+        { label: 'Role Management', href: '/dashboard/departments', icon: Building2 },
       ],
     },
     {
@@ -120,6 +128,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Hiring Requests', href: '/dashboard/hiring', icon: UserPlus },
         { label: 'Recruitment', href: '/dashboard/recruitment', icon: Search },
+        { label: 'My Drives', href: '/dashboard/my-drives', icon: Building2 },
       ],
     },
     {

@@ -47,6 +47,7 @@ interface AttendanceSummary {
   absent: number;
   halfDay: number;
   paidLeave: number;
+  unpaidLeave: number;
   holiday: number;
   total: number;
 }
@@ -56,6 +57,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
   HALF_DAY: { bg: '#fef3c7', text: '#92400e', label: 'Half Day' },
   ABSENT: { bg: '#fee2e2', text: '#991b1b', label: 'Absent' },
   PAID_LEAVE: { bg: '#dbeafe', text: '#1e40af', label: 'Paid Leave' },
+  UNPAID_LEAVE: { bg: '#e5e7eb', text: '#374151', label: 'Unpaid Leave' },
   ABSENT_DOUBLE_DEDUCTION: { bg: '#fecaca', text: '#7f1d1d', label: 'Absent (2x)' },
   OFFICIAL_HOLIDAY: { bg: '#f3e8ff', text: '#6b21a8', label: 'Holiday' },
   NOT_MARKED: { bg: '#f3f4f6', text: '#6b7280', label: 'Not Marked' },
@@ -236,6 +238,7 @@ function PersonalCalendarView({ canManageHolidays }: { canManageHolidays: boolea
             { label: 'Absent', value: summary.absent, color: '#ef4444' },
             { label: 'Half Days', value: summary.halfDay, color: '#f59e0b' },
             { label: 'Paid Leave', value: summary.paidLeave, color: '#3b82f6' },
+            { label: 'Unpaid Leave', value: summary.unpaidLeave, color: '#6b7280' },
             { label: 'Holidays', value: summary.holiday, color: '#a855f7' },
           ].map((stat) => (
             <div key={stat.label} style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: `4px solid ${stat.color}` }}>

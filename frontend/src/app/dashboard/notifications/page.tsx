@@ -88,6 +88,10 @@ export default function NotificationsPage() {
     ? notifications
     : notifications.filter(n => !n.isRead);
 
+  const stripHtml = (text: string) => {
+    return text.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  };
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'INTERVIEWER_ASSIGNED':
@@ -254,7 +258,7 @@ export default function NotificationsPage() {
                             lineHeight: 1.5,
                           }}
                         >
-                          {notification.message}
+                          {stripHtml(notification.message)}
                         </p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '12px', color: '#9ca3af' }}>
