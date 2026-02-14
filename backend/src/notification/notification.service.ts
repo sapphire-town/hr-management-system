@@ -562,36 +562,59 @@ export class NotificationService {
     subject: string;
     message: string;
     type: 'email' | 'in-app' | 'both';
+    notificationType?: NotificationType;
   }) {
-    const { recipientId, subject, message, type } = params;
+    const { recipientId, subject, message, type, notificationType } = params;
 
-    // Create in-app notification
-    if (type === 'in-app' || type === 'both') {
-      await this.createNotification(recipientId, subject, message, 'in-app');
-    }
+    try {
+      // Look up the user once for both in-app and email
+      const user = await this.prisma.user.findUnique({
+        where: { id: recipientId },
+      });
 
-    // Send email notification
-    if (type === 'email' || type === 'both') {
-      try {
-        // Try to get email from user
-        const user = await this.prisma.user.findUnique({
-          where: { id: recipientId },
-        });
-
-        if (user?.email) {
-          await this.transporter.sendMail({
-            from: this.configService.get('EMAIL_FROM'),
-            to: user.email,
-            subject,
-            html: `
-              <h2>${subject}</h2>
-              <p>${message}</p>
-            `,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to send email notification:', error);
+      if (!user) {
+        console.error('User not found for recipientId:', recipientId);
+        return;
       }
+
+      // Create in-app notification
+      if (type === 'in-app' || type === 'both') {
+        try {
+          await this.prisma.notification.create({
+            data: {
+              recipientId: user.id,
+              subject,
+              message,
+              type: notificationType || NotificationType.WELCOME,
+              channel: NotificationChannel.IN_APP,
+              sentAt: new Date(),
+            },
+          });
+        } catch (error) {
+          console.error('Failed to create in-app notification:', error);
+        }
+      }
+
+      // Send email notification
+      if (type === 'email' || type === 'both') {
+        try {
+          if (user.email) {
+            await this.transporter.sendMail({
+              from: this.configService.get('EMAIL_FROM'),
+              to: user.email,
+              subject,
+              html: `
+                <h2>${subject}</h2>
+                <p>${message}</p>
+              `,
+            });
+          }
+        } catch (error) {
+          console.error('Failed to send email notification:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send notification:', error);
     }
   }
 

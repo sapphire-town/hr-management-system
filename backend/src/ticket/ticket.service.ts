@@ -22,34 +22,22 @@ export class TicketService {
   ) {}
 
   async create(createdBy: string, dto: CreateTicketDto) {
-    // Find the employee's manager or HR to assign
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: createdBy },
-      include: { manager: true },
+    // Verify the assignee exists
+    const assignee = await this.prisma.employee.findUnique({
+      where: { id: dto.assignedTo },
     });
 
-    if (!employee) {
-      throw new NotFoundException('Employee not found');
-    }
-
-    // Assign to manager if exists, otherwise find HR
-    let assignedTo = employee.managerId;
-
-    if (!assignedTo) {
-      const hrUser = await this.prisma.user.findFirst({
-        where: { role: 'HR_HEAD', isActive: true },
-        include: { employee: true },
-      });
-      assignedTo = hrUser?.employee?.id || createdBy;
+    if (!assignee) {
+      throw new NotFoundException('Assigned employee not found');
     }
 
     const ticket = await this.prisma.ticket.create({
       data: {
         subject: dto.subject,
         description: dto.description,
-        category: dto.category || 'General',
+        category: null,
         createdBy,
-        assignedTo,
+        assignedTo: dto.assignedTo,
         status: TicketStatus.OPEN,
         comments: [],
       },
@@ -64,10 +52,10 @@ export class TicketService {
     });
 
     // Notify assignee immediately
-    if (assignedTo && assignedTo !== createdBy) {
+    if (dto.assignedTo !== createdBy) {
       try {
         const assigneeUser = await this.prisma.user.findFirst({
-          where: { employee: { id: assignedTo } },
+          where: { employee: { id: dto.assignedTo } },
         });
         if (assigneeUser) {
           const creatorName = ticket.creator
@@ -77,12 +65,11 @@ export class TicketService {
             data: {
               recipientId: assigneeUser.id,
               subject: `New Ticket Assigned: ${dto.subject}`,
-              message: `${creatorName} has raised a ticket "${dto.subject}" (${dto.category || 'General'}) and it has been assigned to you.`,
+              message: `${creatorName} has raised a ticket "${dto.subject}" and assigned it to you.`,
               type: 'TICKET_ASSIGNED' as NotificationType,
               channel: NotificationChannel.BOTH,
               metadata: {
                 ticketId: ticket.id,
-                category: dto.category || 'General',
                 creatorName,
               },
               sentAt: new Date(),
@@ -95,6 +82,22 @@ export class TicketService {
     }
 
     return ticket;
+  }
+
+  async getAssignableEmployees() {
+    return this.prisma.employee.findMany({
+      where: {
+        user: { isActive: true },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: { select: { name: true } },
+        user: { select: { role: true } },
+      },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
   }
 
   async getMyTickets(employeeId: string) {
@@ -163,7 +166,6 @@ export class TicketService {
 
     const where: any = {};
     if (filters.status) where.status = filters.status;
-    if (filters.category) where.category = filters.category;
 
     const [records, total] = await Promise.all([
       this.prisma.ticket.findMany({
@@ -399,14 +401,10 @@ export class TicketService {
   }
 
   async getStatistics() {
-    const [total, byStatus, byCategory, recentTickets] = await Promise.all([
+    const [total, byStatus, recentTickets] = await Promise.all([
       this.prisma.ticket.count(),
       this.prisma.ticket.groupBy({
         by: ['status'],
-        _count: { id: true },
-      }),
-      this.prisma.ticket.groupBy({
-        by: ['category'],
         _count: { id: true },
       }),
       this.prisma.ticket.findMany({
@@ -422,16 +420,12 @@ export class TicketService {
     const statusMap: Record<string, number> = {};
     byStatus.forEach((s) => { statusMap[s.status] = s._count.id; });
 
-    const categoryMap: Record<string, number> = {};
-    byCategory.forEach((c) => { categoryMap[c.category || 'General'] = c._count.id; });
-
     return {
       total,
       open: statusMap['OPEN'] || 0,
       inProgress: statusMap['IN_PROGRESS'] || 0,
       resolved: statusMap['RESOLVED'] || 0,
       closed: statusMap['CLOSED'] || 0,
-      byCategory: categoryMap,
       recentTickets,
     };
   }

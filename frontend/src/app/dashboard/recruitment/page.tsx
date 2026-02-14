@@ -16,6 +16,8 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout';
@@ -27,6 +29,7 @@ interface PlacementDrive {
   collegeName: string;
   driveDate: string;
   roles: Array<{ name: string; description: string; positions?: number }>;
+  status: string;
   createdAt: string;
   interviewers: Array<{
     id: string;
@@ -137,6 +140,22 @@ export default function RecruitmentPage() {
       fetchData();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to delete placement drive');
+    }
+  };
+
+  const handleToggleDriveStatus = async (driveId: string, currentStatus: string) => {
+    const action = currentStatus === 'CLOSED' ? 'reopen' : 'close';
+    if (!confirm(`Are you sure you want to ${action} this placement drive?`)) return;
+
+    try {
+      if (action === 'close') {
+        await recruitmentAPI.closeDrive(driveId);
+      } else {
+        await recruitmentAPI.reopenDrive(driveId);
+      }
+      fetchData();
+    } catch (error: any) {
+      alert(error.response?.data?.message || `Failed to ${action} placement drive`);
     }
   };
 
@@ -384,6 +403,23 @@ export default function RecruitmentPage() {
                               >
                                 {isUpcoming ? 'Upcoming' : 'Completed'}
                               </span>
+                              {drive.status === 'CLOSED' && (
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    backgroundColor: '#fee2e2',
+                                    color: '#dc2626',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                >
+                                  <Lock style={{ width: '10px', height: '10px' }} />
+                                  Closed
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -539,6 +575,39 @@ export default function RecruitmentPage() {
                 >
                   <UserPlus style={{ width: '16px', height: '16px' }} />
                   Assign Interviewers
+                </button>
+                <button
+                  onClick={() => {
+                    const driveId = actionMenuOpen;
+                    const drive = drives.find((d) => d.id === driveId);
+                    setActionMenuOpen(null);
+                    setMenuPosition(null);
+                    if (drive) handleToggleDriveStatus(driveId, drive.status);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: drives.find((d) => d.id === actionMenuOpen)?.status === 'CLOSED' ? '#059669' : '#d97706',
+                  }}
+                >
+                  {drives.find((d) => d.id === actionMenuOpen)?.status === 'CLOSED' ? (
+                    <>
+                      <Unlock style={{ width: '16px', height: '16px' }} />
+                      Reopen Drive
+                    </>
+                  ) : (
+                    <>
+                      <Lock style={{ width: '16px', height: '16px' }} />
+                      Close Drive
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={() => {

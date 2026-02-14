@@ -77,6 +77,12 @@ export class TicketController {
     return this.ticketService.getAll(filters);
   }
 
+  @Get('employees')
+  @ApiOperation({ summary: 'Get list of employees assignable to tickets' })
+  async getAssignableEmployees() {
+    return this.ticketService.getAssignableEmployees();
+  }
+
   @Get('statistics')
   @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Get ticket statistics' })

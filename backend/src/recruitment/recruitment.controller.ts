@@ -99,6 +99,20 @@ export class RecruitmentController {
     return this.recruitmentService.deleteDrive(id);
   }
 
+  @Patch('drives/:id/close')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Close a placement drive' })
+  async closeDrive(@Param('id') id: string) {
+    return this.recruitmentService.closeDrive(id);
+  }
+
+  @Patch('drives/:id/reopen')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Reopen a closed placement drive' })
+  async reopenDrive(@Param('id') id: string) {
+    return this.recruitmentService.reopenDrive(id);
+  }
+
   @Get('drives/:id/statistics')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.MANAGER)
   @ApiOperation({ summary: 'Get placement drive statistics' })
@@ -128,40 +142,42 @@ export class RecruitmentController {
   // ==================== STUDENTS ====================
 
   @Post('drives/:id/students')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Add a student to placement drive' })
   async addStudent(
     @Param('id') id: string,
     @Body() dto: CreateStudentDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.recruitmentService.addStudent(id, dto);
+    return this.recruitmentService.addStudent(id, dto, user.role);
   }
 
   @Post('drives/:id/students/bulk')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Bulk add students to placement drive' })
   async bulkAddStudents(
     @Param('id') id: string,
     @Body() dto: BulkCreateStudentsDto,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.recruitmentService.bulkAddStudents(id, dto);
+    return this.recruitmentService.bulkAddStudents(id, dto, user.role);
   }
 
   @Post('drives/:id/students/import')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Bulk import students from Excel file' })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async importStudentsFromExcel(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
-    @Request() req: any,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.recruitmentService.importStudentsFromExcel(id, file.buffer, req.user.employeeId);
+    return this.recruitmentService.importStudentsFromExcel(id, file.buffer, user.employeeId, user.role);
   }
 
   @Get('students/import-template')
-  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD, UserRole.INTERVIEWER)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Download student import Excel template' })
   async downloadStudentImportTemplate(@Res() res: Response) {
     const buffer = await this.recruitmentService.generateStudentImportTemplate();

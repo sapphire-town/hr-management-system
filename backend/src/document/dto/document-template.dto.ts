@@ -14,6 +14,10 @@ export class CreateDocumentTemplateDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiProperty({ description: 'HTML template content with {{placeholder}} syntax' })
+  @IsString()
+  htmlContent: string;
 }
 
 export class GenerateDocumentsDto {

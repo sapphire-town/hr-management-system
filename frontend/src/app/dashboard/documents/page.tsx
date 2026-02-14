@@ -82,7 +82,7 @@ interface DocumentTemplate {
   name: string;
   documentType: string;
   description?: string;
-  fileName: string;
+  htmlContent: string;
   placeholders: string[];
   createdAt: string;
   creator?: { firstName: string; lastName: string };
@@ -92,6 +92,8 @@ interface Placeholder {
   key: string;
   description: string;
   example: string;
+  syntax: string;
+  aliases?: string[];
 }
 
 const templateDocumentTypes: Record<string, string> = {
@@ -176,8 +178,9 @@ export default function DocumentsPage() {
     name: '',
     documentType: '',
     description: '',
-    file: null as File | null,
+    htmlContent: '',
   });
+  const [showTemplatePreview, setShowTemplatePreview] = React.useState(false);
   const [selectedEmployees, setSelectedEmployees] = React.useState<string[]>([]);
   const [generateSearch, setGenerateSearch] = React.useState('');
   const [showPlaceholderGuide, setShowPlaceholderGuide] = React.useState(false);
@@ -433,20 +436,22 @@ export default function DocumentsPage() {
 
   // Template handlers
   const handleUploadTemplate = async () => {
-    if (!templateUploadData.name || !templateUploadData.documentType || !templateUploadData.file) return;
+    if (!templateUploadData.name || !templateUploadData.documentType || !templateUploadData.htmlContent.trim()) return;
 
     try {
       setSubmitting(true);
-      await documentAPI.uploadTemplate(templateUploadData.file, {
+      await documentAPI.createTemplate({
         name: templateUploadData.name,
         documentType: templateUploadData.documentType,
         description: templateUploadData.description || undefined,
+        htmlContent: templateUploadData.htmlContent,
       });
       setShowUploadTemplateModal(false);
-      setTemplateUploadData({ name: '', documentType: '', description: '', file: null });
+      setTemplateUploadData({ name: '', documentType: '', description: '', htmlContent: '' });
+      setShowTemplatePreview(false);
       fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to upload template');
+      alert(error.response?.data?.message || 'Failed to create template');
     } finally {
       setSubmitting(false);
     }
@@ -1064,7 +1069,7 @@ export default function DocumentsPage() {
                     Document Templates
                   </h3>
                   <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0 0' }}>
-                    Upload .docx templates with placeholders to auto-generate documents for employees
+                    Create HTML templates with {'{{placeholders}}'} to auto-generate documents for employees
                   </p>
                 </div>
                 <button
@@ -1084,7 +1089,7 @@ export default function DocumentsPage() {
                   }}
                 >
                   <Plus style={{ height: '14px', width: '14px' }} />
-                  Upload Template
+                  Create Template
                 </button>
               </div>
             </div>
@@ -1092,8 +1097,8 @@ export default function DocumentsPage() {
               {templates.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
                   <FolderOpen style={{ height: '48px', width: '48px', margin: '0 auto 16px', opacity: 0.5 }} />
-                  <p style={{ fontSize: '16px', fontWeight: 500, margin: '0 0 8px' }}>No templates uploaded yet</p>
-                  <p style={{ margin: 0 }}>Upload a .docx template with placeholders like {'{firstName}'}, {'{lastName}'} to get started</p>
+                  <p style={{ fontSize: '16px', fontWeight: 500, margin: '0 0 8px' }}>No templates created yet</p>
+                  <p style={{ margin: 0 }}>Create an HTML template with placeholders like {'{{firstName}}'}, {'{{lastName}}'} to get started</p>
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
@@ -1152,7 +1157,7 @@ export default function DocumentsPage() {
                               backgroundColor: '#dbeafe', color: '#1d4ed8', fontFamily: 'monospace',
                             }}
                           >
-                            {'{' + p + '}'}
+                            {'{{' + p + '}}'}
                           </span>
                         ))}
                         {(tmpl.placeholders || []).length > 5 && (
@@ -1165,30 +1170,56 @@ export default function DocumentsPage() {
                         Created {new Date(tmpl.createdAt).toLocaleDateString()}
                         {tmpl.creator && ` by ${tmpl.creator.firstName} ${tmpl.creator.lastName}`}
                       </div>
-                      <button
-                        onClick={() => {
-                          setSelectedTemplate(tmpl);
-                          setShowGenerateModal(true);
-                        }}
-                        style={{
-                          width: '100%',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '8px',
-                          padding: '10px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                          color: '#fff',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Zap style={{ height: '14px', width: '14px' }} />
-                        Generate Documents
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => {
+                            setSelectedTemplate(tmpl);
+                            setShowTemplatePreview(true);
+                          }}
+                          style={{
+                            flex: 1,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            padding: '10px',
+                            borderRadius: '8px',
+                            border: '1px solid #e5e7eb',
+                            backgroundColor: '#fff',
+                            color: '#374151',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Eye style={{ height: '14px', width: '14px' }} />
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedTemplate(tmpl);
+                            setShowGenerateModal(true);
+                          }}
+                          style={{
+                            flex: 1,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            padding: '10px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                            color: '#fff',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Zap style={{ height: '14px', width: '14px' }} />
+                          Generate
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1647,7 +1678,7 @@ export default function DocumentsPage() {
                               padding: '2px 6px', borderRadius: '4px', fontSize: '11px',
                               backgroundColor: '#dbeafe', color: '#1d4ed8',
                             }}>
-                              {'{' + p + '}'}
+                              {'{{' + p + '}}'}
                             </code>
                           ))}
                         </div>
@@ -1951,19 +1982,19 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {/* Upload Template Modal */}
+      {/* Create Template Modal */}
       {showUploadTemplateModal && (
         <div
           style={{
             position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
           }}
-          onClick={() => setShowUploadTemplateModal(false)}
+          onClick={() => { setShowUploadTemplateModal(false); setShowTemplatePreview(false); }}
         >
           <div
             style={{
               backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px',
-              width: '100%', maxWidth: '560px', margin: '16px', maxHeight: '90vh', overflowY: 'auto',
+              width: '100%', maxWidth: '800px', margin: '16px', maxHeight: '90vh', overflowY: 'auto',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1975,93 +2006,148 @@ export default function DocumentsPage() {
                 <FileText style={{ height: '20px', width: '20px', color: '#7c3aed' }} />
               </div>
               <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0, color: '#111827' }}>Upload Document Template</h3>
+                <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0, color: '#111827' }}>Create HTML Template</h3>
                 <p style={{ fontSize: '13px', color: '#6b7280', margin: '2px 0 0' }}>
-                  Upload a .docx file with placeholders like {'{firstName}'}, {'{lastName}'}
+                  Write or upload HTML with placeholders like {'{{employee_name}}'}, {'{{designation}}'}, {'{{offer_date}}'}
                 </p>
               </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
-                  Template Name *
-                </label>
-                <input
-                  type="text"
-                  value={templateUploadData.name}
-                  onChange={(e) => setTemplateUploadData({ ...templateUploadData, name: e.target.value })}
-                  placeholder="e.g., Offer Letter Template"
-                  style={{
-                    width: '100%', padding: '12px 16px', borderRadius: '10px',
-                    border: '1px solid #e5e7eb', fontSize: '14px', color: '#111827',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
-                  Document Type *
-                </label>
-                <select
-                  value={templateUploadData.documentType}
-                  onChange={(e) => setTemplateUploadData({ ...templateUploadData, documentType: e.target.value })}
-                  style={{
-                    width: '100%', padding: '12px 16px', borderRadius: '10px',
-                    border: '1px solid #e5e7eb', fontSize: '14px', color: '#111827', backgroundColor: '#ffffff',
-                  }}
-                >
-                  <option value="">Select document type</option>
-                  {Object.entries(templateDocumentTypes).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
+                    Template Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={templateUploadData.name}
+                    onChange={(e) => setTemplateUploadData({ ...templateUploadData, name: e.target.value })}
+                    placeholder="e.g., Offer Letter Template"
+                    style={{
+                      width: '100%', padding: '10px 14px', borderRadius: '10px',
+                      border: '1px solid #e5e7eb', fontSize: '14px', color: '#111827',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
+                    Document Type *
+                  </label>
+                  <select
+                    value={templateUploadData.documentType}
+                    onChange={(e) => setTemplateUploadData({ ...templateUploadData, documentType: e.target.value })}
+                    style={{
+                      width: '100%', padding: '10px 14px', borderRadius: '10px',
+                      border: '1px solid #e5e7eb', fontSize: '14px', color: '#111827', backgroundColor: '#ffffff',
+                    }}
+                  >
+                    <option value="">Select document type</option>
+                    {Object.entries(templateDocumentTypes).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
                   Description
                 </label>
-                <textarea
+                <input
+                  type="text"
                   value={templateUploadData.description}
                   onChange={(e) => setTemplateUploadData({ ...templateUploadData, description: e.target.value })}
                   placeholder="Optional description for this template"
-                  rows={2}
                   style={{
-                    width: '100%', padding: '12px 16px', borderRadius: '10px',
-                    border: '1px solid #e5e7eb', fontSize: '14px', resize: 'vertical',
+                    width: '100%', padding: '10px 14px', borderRadius: '10px',
+                    border: '1px solid #e5e7eb', fontSize: '14px', color: '#111827',
                   }}
                 />
               </div>
 
+              {/* HTML Content Editor */}
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
-                  Template File (.docx) *
-                </label>
-                <div
-                  style={{
-                    border: '2px dashed #e5e7eb', borderRadius: '10px', padding: '24px',
-                    textAlign: 'center', cursor: 'pointer', backgroundColor: '#f9fafb',
-                  }}
-                >
-                  <input
-                    type="file"
-                    onChange={(e) => setTemplateUploadData({ ...templateUploadData, file: e.target.files?.[0] || null })}
-                    style={{ display: 'none' }}
-                    id="template-file-upload"
-                    accept=".docx"
-                  />
-                  <label htmlFor="template-file-upload" style={{ cursor: 'pointer' }}>
-                    <Upload style={{ height: '32px', width: '32px', color: '#9ca3af', margin: '0 auto 8px' }} />
-                    <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-                      {templateUploadData.file ? templateUploadData.file.name : 'Click to upload .docx template'}
-                    </p>
-                    <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0 0' }}>
-                      Only .docx files up to 5MB
-                    </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>
+                    HTML Content *
                   </label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <label
+                      htmlFor="html-file-upload"
+                      style={{
+                        padding: '4px 10px', borderRadius: '6px', border: '1px solid #e5e7eb',
+                        backgroundColor: '#fff', color: '#7c3aed',
+                        fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                      }}
+                    >
+                      <Upload style={{ height: '12px', width: '12px' }} />
+                      Upload .html
+                    </label>
+                    <input
+                      type="file"
+                      id="html-file-upload"
+                      accept=".html,.htm"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const content = ev.target?.result as string;
+                            if (content) {
+                              setTemplateUploadData({ ...templateUploadData, htmlContent: content });
+                            }
+                          };
+                          reader.readAsText(file);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                    <button
+                      onClick={() => setShowTemplatePreview(!showTemplatePreview)}
+                      style={{
+                        padding: '4px 10px', borderRadius: '6px', border: '1px solid #e5e7eb',
+                        backgroundColor: showTemplatePreview ? '#f5f3ff' : '#fff', color: '#7c3aed',
+                        fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                      }}
+                    >
+                      <Eye style={{ height: '12px', width: '12px' }} />
+                      {showTemplatePreview ? 'Hide Preview' : 'Preview'}
+                    </button>
+                  </div>
                 </div>
+                <textarea
+                  value={templateUploadData.htmlContent}
+                  onChange={(e) => setTemplateUploadData({ ...templateUploadData, htmlContent: e.target.value })}
+                  placeholder={'<html>\n<body>\n  <h1>Offer Letter</h1>\n  <p>Dear {{employee_name}},</p>\n  <p>We are pleased to offer you the position of {{designation}}.</p>\n  <p>Your joining date is {{joinDate}}.</p>\n  <p>Date: {{offer_date}}</p>\n</body>\n</html>'}
+                  rows={12}
+                  style={{
+                    width: '100%', padding: '12px 14px', borderRadius: '10px',
+                    border: '1px solid #e5e7eb', fontSize: '13px', color: '#111827',
+                    fontFamily: 'monospace', resize: 'vertical', lineHeight: '1.5',
+                    backgroundColor: '#fafafa',
+                  }}
+                />
               </div>
+
+              {/* Preview pane */}
+              {showTemplatePreview && templateUploadData.htmlContent && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
+                    Preview
+                  </label>
+                  <div
+                    style={{
+                      border: '1px solid #e5e7eb', borderRadius: '10px', padding: '16px',
+                      backgroundColor: '#ffffff', maxHeight: '300px', overflowY: 'auto',
+                    }}
+                    dangerouslySetInnerHTML={{ __html: templateUploadData.htmlContent }}
+                  />
+                </div>
+              )}
 
               {/* Placeholder Reference Guide */}
               <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden' }}>
@@ -2085,7 +2171,7 @@ export default function DocumentsPage() {
                 {showPlaceholderGuide && (
                   <div style={{ padding: '12px 16px', maxHeight: '200px', overflowY: 'auto' }}>
                     <p style={{ fontSize: '12px', color: '#6b7280', margin: '0 0 8px' }}>
-                      Use these placeholders in your .docx template. They will be replaced with employee data.
+                      Use these placeholders in your HTML template. They will be replaced with employee data when generating documents.
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
                       {placeholders.map((p) => (
@@ -2093,13 +2179,43 @@ export default function DocumentsPage() {
                           key={p.key}
                           style={{
                             padding: '6px 8px', borderRadius: '6px', backgroundColor: '#f0f9ff',
-                            display: 'flex', flexDirection: 'column', gap: '2px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
                           }}
                         >
-                          <code style={{ fontSize: '12px', color: '#1d4ed8', fontWeight: 600 }}>
-                            {'{' + p.key + '}'}
-                          </code>
-                          <span style={{ fontSize: '11px', color: '#6b7280' }}>{p.description}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                            <code style={{ fontSize: '12px', color: '#1d4ed8', fontWeight: 600 }}>
+                              {'{{' + p.key + '}}'}
+                            </code>
+                            <span style={{ fontSize: '11px', color: '#6b7280' }}>{p.description}</span>
+                            {(p.aliases || []).length > 0 && (
+                              <span style={{ fontSize: '10px', color: '#9ca3af' }}>
+                                Also: {(p.aliases || []).map(a => `{{${a}}}`).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
+                              if (textarea) {
+                                const start = textarea.selectionStart;
+                                const end = textarea.selectionEnd;
+                                const text = templateUploadData.htmlContent;
+                                const placeholder = '{{' + p.key + '}}';
+                                setTemplateUploadData({
+                                  ...templateUploadData,
+                                  htmlContent: text.substring(0, start) + placeholder + text.substring(end),
+                                });
+                              }
+                            }}
+                            style={{
+                              padding: '2px 6px', borderRadius: '4px', border: '1px solid #bfdbfe',
+                              backgroundColor: '#dbeafe', color: '#1d4ed8', fontSize: '11px',
+                              cursor: 'pointer', flexShrink: 0,
+                            }}
+                            title={`Insert {{${p.key}}}`}
+                          >
+                            Insert
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -2111,7 +2227,8 @@ export default function DocumentsPage() {
                 <button
                   onClick={() => {
                     setShowUploadTemplateModal(false);
-                    setTemplateUploadData({ name: '', documentType: '', description: '', file: null });
+                    setTemplateUploadData({ name: '', documentType: '', description: '', htmlContent: '' });
+                    setShowTemplatePreview(false);
                   }}
                   style={{
                     padding: '10px 20px', borderRadius: '10px', border: '1px solid #e5e7eb',
@@ -2122,18 +2239,18 @@ export default function DocumentsPage() {
                 </button>
                 <button
                   onClick={handleUploadTemplate}
-                  disabled={!templateUploadData.name || !templateUploadData.documentType || !templateUploadData.file || submitting}
+                  disabled={!templateUploadData.name || !templateUploadData.documentType || !templateUploadData.htmlContent.trim() || submitting}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: '8px',
                     padding: '10px 20px', borderRadius: '10px', border: 'none',
-                    background: templateUploadData.name && templateUploadData.documentType && templateUploadData.file && !submitting
+                    background: templateUploadData.name && templateUploadData.documentType && templateUploadData.htmlContent.trim() && !submitting
                       ? 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' : '#d1d5db',
                     color: '#ffffff', fontSize: '14px', fontWeight: 600,
-                    cursor: templateUploadData.name && templateUploadData.documentType && templateUploadData.file && !submitting ? 'pointer' : 'not-allowed',
+                    cursor: templateUploadData.name && templateUploadData.documentType && templateUploadData.htmlContent.trim() && !submitting ? 'pointer' : 'not-allowed',
                   }}
                 >
-                  <Upload style={{ height: '16px', width: '16px' }} />
-                  {submitting ? 'Uploading...' : 'Upload Template'}
+                  <Plus style={{ height: '16px', width: '16px' }} />
+                  {submitting ? 'Creating...' : 'Create Template'}
                 </button>
               </div>
             </div>
@@ -2363,7 +2480,7 @@ export default function DocumentsPage() {
                           backgroundColor: '#dbeafe', color: '#1d4ed8',
                         }}
                       >
-                        {'{' + p + '}'}
+                        {'{{' + p + '}}'}
                       </code>
                     ))}
                     {(selectedTemplate.placeholders || []).length === 0 && (
@@ -2400,6 +2517,69 @@ export default function DocumentsPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Template Preview Modal */}
+      {showTemplatePreview && selectedTemplate && !showUploadTemplateModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
+          }}
+          onClick={() => { setShowTemplatePreview(false); setSelectedTemplate(null); }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff', borderRadius: '16px', padding: '24px',
+              width: '100%', maxWidth: '800px', margin: '16px', maxHeight: '90vh', overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 600, margin: 0, color: '#111827' }}>
+                  {selectedTemplate.name}
+                </h3>
+                <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>
+                  {templateDocumentTypes[selectedTemplate.documentType] || selectedTemplate.documentType}
+                  {selectedTemplate.description && ` — ${selectedTemplate.description}`}
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowTemplatePreview(false); setSelectedTemplate(null); }}
+                style={{
+                  padding: '8px', borderRadius: '8px', border: '1px solid #e5e7eb',
+                  backgroundColor: '#fff', cursor: 'pointer', color: '#6b7280',
+                }}
+              >
+                <X style={{ height: '16px', width: '16px' }} />
+              </button>
+            </div>
+
+            {/* Placeholders */}
+            {(selectedTemplate.placeholders || []).length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '16px' }}>
+                {selectedTemplate.placeholders.map((p) => (
+                  <span key={p} style={{
+                    padding: '2px 8px', borderRadius: '4px', fontSize: '11px',
+                    backgroundColor: '#dbeafe', color: '#1d4ed8', fontFamily: 'monospace',
+                  }}>
+                    {'{{' + p + '}}'}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* HTML Preview */}
+            <div
+              style={{
+                border: '1px solid #e5e7eb', borderRadius: '10px', padding: '20px',
+                backgroundColor: '#ffffff', maxHeight: '500px', overflowY: 'auto',
+              }}
+              dangerouslySetInnerHTML={{ __html: selectedTemplate.htmlContent }}
+            />
           </div>
         </div>
       )}

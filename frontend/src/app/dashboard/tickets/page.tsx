@@ -33,7 +33,7 @@ interface TicketData {
   id: string;
   subject: string;
   description: string;
-  category: string;
+  category: string | null;
   status: string;
   createdBy: string;
   assignedTo: string;
@@ -43,6 +43,14 @@ interface TicketData {
   resolvedAt: string | null;
   creator?: { firstName: string; lastName: string };
   assignee?: { firstName: string; lastName: string };
+}
+
+interface AssignableEmployee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  role?: { name: string };
+  user?: { role: string };
 }
 
 interface TicketStats {
@@ -59,8 +67,6 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: React.Rea
   RESOLVED: { color: '#22c55e', bg: '#dcfce7', icon: <CheckCircle style={{ height: '14px', width: '14px' }} />, label: 'Resolved' },
   CLOSED: { color: '#6b7280', bg: '#f3f4f6', icon: <XCircle style={{ height: '14px', width: '14px' }} />, label: 'Closed' },
 };
-
-const CATEGORIES = ['General', 'IT Support', 'HR', 'Facilities', 'Payroll', 'Leave', 'Other'];
 
 export default function TicketsPage() {
   const { user } = useAuthStore();
@@ -80,10 +86,14 @@ export default function TicketsPage() {
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [allTicketsPage, setAllTicketsPage] = React.useState(1);
 
+  // Assignable employees list
+  const [employees, setEmployees] = React.useState<AssignableEmployee[]>([]);
+  const [employeeSearch, setEmployeeSearch] = React.useState('');
+
   // Create form state
   const [subject, setSubject] = React.useState('');
   const [description, setDescription] = React.useState('');
-  const [category, setCategory] = React.useState('General');
+  const [assignedToId, setAssignedToId] = React.useState('');
   const [creating, setCreating] = React.useState(false);
 
   // Comment state
@@ -96,6 +106,7 @@ export default function TicketsPage() {
       const promises: Promise<any>[] = [
         ticketAPI.getMyTickets(),
         ticketAPI.getAssignedTickets(),
+        ticketAPI.getAssignableEmployees(),
       ];
       if (isHR) {
         promises.push(ticketAPI.getAll({ page, limit: 50 }));
@@ -107,14 +118,17 @@ export default function TicketsPage() {
       const results = await Promise.all(promises);
       setMyTickets(results[0].data || []);
       setAssignedTickets(results[1].data || []);
+      setEmployees(results[2].data || []);
 
+      let idx = 3;
       if (isHR) {
-        const allRes = results[2].data;
+        const allRes = results[idx].data;
         setAllTickets(allRes?.data || allRes || []);
         if (allRes?.meta) {
           setAllTicketsMeta(allRes.meta);
         }
-        const statsRes = results[3].data;
+        idx++;
+        const statsRes = results[idx].data;
         if (statsRes) {
           setGlobalStats({
             total: statsRes.total || 0,
@@ -126,7 +140,7 @@ export default function TicketsPage() {
         }
       }
       if (isManager) {
-        setTeamTickets(results[2].data || []);
+        setTeamTickets(results[idx].data || []);
       }
     } catch (error) {
       console.error('Error fetching tickets:', error);
@@ -154,13 +168,14 @@ export default function TicketsPage() {
   };
 
   const handleCreate = async () => {
-    if (!subject.trim() || !description.trim()) return;
+    if (!subject.trim() || !description.trim() || !assignedToId) return;
     try {
       setCreating(true);
-      await ticketAPI.create({ subject, description, category });
+      await ticketAPI.create({ subject, description, assignedTo: assignedToId });
       setSubject('');
       setDescription('');
-      setCategory('General');
+      setAssignedToId('');
+      setEmployeeSearch('');
       setShowCreateForm(false);
       await fetchData(allTicketsPage);
     } catch (error: any) {
@@ -328,7 +343,7 @@ export default function TicketsPage() {
           <div style={cardStyle}>
             <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: '#111827' }}>Raise New Ticket</h3>
-              <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>Describe your issue and it will be assigned to the appropriate person</p>
+              <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>Describe your issue and assign it to a specific person</p>
             </div>
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '600px' }}>
               <div>
@@ -336,22 +351,57 @@ export default function TicketsPage() {
                 <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Brief description of the issue" style={inputStyle} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>Category</label>
-                <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...inputStyle, appearance: 'auto' }}>
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>Assigned To *</label>
+                <input
+                  type="text"
+                  value={employeeSearch}
+                  onChange={(e) => { setEmployeeSearch(e.target.value); setAssignedToId(''); }}
+                  placeholder="Search employee by name..."
+                  style={inputStyle}
+                />
+                {employeeSearch && !assignedToId && (
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', maxHeight: '200px', overflow: 'auto', marginTop: '4px', backgroundColor: '#fff' }}>
+                    {employees
+                      .filter(emp => {
+                        const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+                        const search = employeeSearch.toLowerCase();
+                        return fullName.includes(search) && emp.id !== user?.employee?.id;
+                      })
+                      .map(emp => (
+                        <div
+                          key={emp.id}
+                          onClick={() => { setAssignedToId(emp.id); setEmployeeSearch(`${emp.firstName} ${emp.lastName}`); }}
+                          style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f5f3ff'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+                        >
+                          <span style={{ fontSize: '14px', color: '#111827' }}>{emp.firstName} {emp.lastName}</span>
+                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>{emp.role?.name || emp.user?.role || ''}</span>
+                        </div>
+                      ))}
+                    {employees.filter(emp => {
+                      const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
+                      return fullName.includes(employeeSearch.toLowerCase()) && emp.id !== user?.employee?.id;
+                    }).length === 0 && (
+                      <div style={{ padding: '12px 14px', fontSize: '13px', color: '#9ca3af', textAlign: 'center' }}>No employees found</div>
+                    )}
+                  </div>
+                )}
+                {assignedToId && (
+                  <p style={{ fontSize: '12px', color: '#059669', margin: '4px 0 0' }}>
+                    Ticket will be assigned to {employeeSearch}
+                  </p>
+                )}
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '8px' }}>Description *</label>
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Provide detailed information about your issue..." rows={5} style={{ ...inputStyle, resize: 'vertical' }} />
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
-                <button onClick={handleCreate} disabled={creating || !subject.trim() || !description.trim()} style={{
+                <button onClick={handleCreate} disabled={creating || !subject.trim() || !description.trim() || !assignedToId} style={{
                   display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '10px', border: 'none',
-                  background: creating || !subject.trim() || !description.trim() ? '#d1d5db' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                  color: '#fff', fontSize: '14px', fontWeight: 600, cursor: creating || !subject.trim() || !description.trim() ? 'not-allowed' : 'pointer',
+                  background: creating || !subject.trim() || !description.trim() || !assignedToId ? '#d1d5db' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                  color: '#fff', fontSize: '14px', fontWeight: 600, cursor: creating || !subject.trim() || !description.trim() || !assignedToId ? 'not-allowed' : 'pointer',
                 }}>
                   <Send style={{ height: '16px', width: '16px' }} />
                   {creating ? 'Creating...' : 'Submit Ticket'}
@@ -422,9 +472,6 @@ export default function TicketsPage() {
                           fontSize: '11px', fontWeight: 600, backgroundColor: config.bg, color: config.color,
                         }}>
                           {config.icon} {config.label}
-                        </span>
-                        <span style={{ padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: 500, backgroundColor: '#f3f4f6', color: '#374151' }}>
-                          {ticket.category}
                         </span>
                       </div>
                       <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>

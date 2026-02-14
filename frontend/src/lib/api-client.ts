@@ -220,24 +220,17 @@ export const documentAPI = {
   // Document Templates
   getPlaceholders: () => apiClient.get('/documents/templates/placeholders'),
   getTemplates: () => apiClient.get('/documents/templates'),
-  uploadTemplate: (file: File, data: { name: string; documentType: string; description?: string }) => {
-    const formData = new FormData();
-    formData.append('template', file);
-    formData.append('name', data.name);
-    formData.append('documentType', data.documentType);
-    if (data.description) formData.append('description', data.description);
-    return apiClient.post('/documents/templates', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
+  createTemplate: (data: { name: string; documentType: string; description?: string; htmlContent: string }) =>
+    apiClient.post('/documents/templates', data),
   deleteTemplate: (id: string) => apiClient.delete(`/documents/templates/${id}`),
-  downloadTemplate: (id: string) => apiClient.get(`/documents/templates/${id}/download`, { responseType: 'blob' }),
+  previewTemplate: (id: string) => apiClient.get(`/documents/templates/${id}/preview`),
   generateDocuments: (templateId: string, employeeIds: string[]) =>
     apiClient.post(`/documents/templates/${templateId}/generate`, { employeeIds }),
 };
 
 export const ticketAPI = {
   create: (data: any) => apiClient.post('/ticket', data),
+  getAssignableEmployees: () => apiClient.get('/ticket/employees'),
   getMyTickets: () => apiClient.get('/ticket/my'),
   getAssignedTickets: () => apiClient.get('/ticket/assigned'),
   getTeamTickets: () => apiClient.get('/ticket/team'),
@@ -419,6 +412,8 @@ export const recruitmentAPI = {
   getDriveById: (id: string) => apiClient.get(`/recruitment/drives/${id}`),
   updateDrive: (id: string, data: any) => apiClient.patch(`/recruitment/drives/${id}`, data),
   deleteDrive: (id: string) => apiClient.delete(`/recruitment/drives/${id}`),
+  closeDrive: (id: string) => apiClient.patch(`/recruitment/drives/${id}/close`),
+  reopenDrive: (id: string) => apiClient.patch(`/recruitment/drives/${id}/reopen`),
   getDriveStatistics: (id: string) => apiClient.get(`/recruitment/drives/${id}/statistics`),
   getMyDrives: () => apiClient.get('/recruitment/drives/my'),
 

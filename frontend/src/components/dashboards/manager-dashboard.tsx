@@ -113,7 +113,7 @@ export function ManagerDashboard() {
         // Fetch pending leave requests
         try {
           const leavesRes = await leaveAPI.getPendingForManager();
-          const pending = (leavesRes.data || []).filter((l: any) => l.status === 'PENDING');
+          const pending = leavesRes.data || [];
           setPendingLeaves(pending.slice(0, 5));
           setStats(prev => ({ ...prev, pendingLeaveCount: pending.length }));
         } catch (e) {

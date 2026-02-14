@@ -15,11 +15,10 @@ import {
   DocumentFilterDto,
 } from './dto/document.dto';
 import { CreateDocumentTemplateDto, GenerateDocumentsDto } from './dto/document-template.dto';
-import { DocumentStatus } from '@prisma/client';
+import { DocumentStatus, NotificationType } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
+import * as puppeteer from 'puppeteer';
 
 @Injectable()
 export class DocumentService {
@@ -64,6 +63,7 @@ export class DocumentService {
       subject: 'New Document Released',
       message: `A new ${dto.documentType.replace('_', ' ')} has been released to you.`,
       type: 'both',
+      notificationType: NotificationType.DOCUMENT_RELEASED,
     });
 
     return document;
@@ -113,6 +113,7 @@ export class DocumentService {
           subject: 'New Document Released',
           message: `A new ${dto.documentType.replace(/_/g, ' ')} has been released to you.`,
           type: 'both',
+          notificationType: NotificationType.DOCUMENT_RELEASED,
         });
 
         generated.push({
@@ -376,49 +377,38 @@ export class DocumentService {
 
   getAvailablePlaceholders() {
     return [
-      { key: 'firstName', description: 'Employee first name', example: 'John' },
-      { key: 'lastName', description: 'Employee last name', example: 'Doe' },
-      { key: 'fullName', description: 'Employee full name', example: 'John Doe' },
-      { key: 'email', description: 'Employee email address', example: 'john@example.com' },
-      { key: 'phone', description: 'Employee phone number', example: '+91 9876543210' },
-      { key: 'address', description: 'Employee address', example: '123 Main St' },
-      { key: 'dateOfBirth', description: 'Date of birth (DD/MM/YYYY)', example: '15/06/1990' },
-      { key: 'gender', description: 'Employee gender', example: 'Male' },
-      { key: 'joinDate', description: 'Joining date (DD/MM/YYYY)', example: '01/01/2024' },
-      { key: 'designation', description: 'Employee designation/role', example: 'Software Engineer' },
-      { key: 'employeeType', description: 'Employment type', example: 'FULL_TIME' },
-      { key: 'salary', description: 'Employee salary', example: '50000' },
-      { key: 'bankName', description: 'Bank name', example: 'State Bank of India' },
-      { key: 'bankAccountNumber', description: 'Bank account number', example: '1234567890' },
-      { key: 'ifscCode', description: 'Bank IFSC code', example: 'SBIN0001234' },
-      { key: 'emergencyContactName', description: 'Emergency contact name', example: 'Jane Doe' },
-      { key: 'emergencyContactPhone', description: 'Emergency contact phone', example: '+91 9876543211' },
-      { key: 'companyName', description: 'Company name from settings', example: 'Acme Corp' },
-      { key: 'currentDate', description: 'Current date (DD/MM/YYYY)', example: '13/02/2026' },
-      { key: 'currentYear', description: 'Current year', example: '2026' },
+      { key: 'firstName', description: 'Employee first name', example: 'John', syntax: '{{firstName}}', aliases: ['first_name'] },
+      { key: 'lastName', description: 'Employee last name', example: 'Doe', syntax: '{{lastName}}', aliases: ['last_name'] },
+      { key: 'fullName', description: 'Employee full name', example: 'John Doe', syntax: '{{fullName}}', aliases: ['full_name', 'employee_name', 'name'] },
+      { key: 'email', description: 'Employee email address', example: 'john@example.com', syntax: '{{email}}', aliases: ['employee_email'] },
+      { key: 'phone', description: 'Employee phone number', example: '+91 9876543210', syntax: '{{phone}}', aliases: [] },
+      { key: 'address', description: 'Employee address', example: '123 Main St', syntax: '{{address}}', aliases: [] },
+      { key: 'dateOfBirth', description: 'Date of birth (DD/MM/YYYY)', example: '15/06/1990', syntax: '{{dateOfBirth}}', aliases: ['date_of_birth'] },
+      { key: 'gender', description: 'Employee gender', example: 'Male', syntax: '{{gender}}', aliases: [] },
+      { key: 'joinDate', description: 'Joining date (DD/MM/YYYY)', example: '01/01/2024', syntax: '{{joinDate}}', aliases: ['join_date', 'joining_date'] },
+      { key: 'designation', description: 'Employee designation/role', example: 'Software Engineer', syntax: '{{designation}}', aliases: ['role', 'position'] },
+      { key: 'employeeType', description: 'Employment type', example: 'FULL_TIME', syntax: '{{employeeType}}', aliases: ['employee_type'] },
+      { key: 'salary', description: 'Employee salary', example: '50000', syntax: '{{salary}}', aliases: [] },
+      { key: 'bankName', description: 'Bank name', example: 'State Bank of India', syntax: '{{bankName}}', aliases: ['bank_name'] },
+      { key: 'bankAccountNumber', description: 'Bank account number', example: '1234567890', syntax: '{{bankAccountNumber}}', aliases: ['bank_account_number'] },
+      { key: 'ifscCode', description: 'Bank IFSC code', example: 'SBIN0001234', syntax: '{{ifscCode}}', aliases: ['ifsc_code'] },
+      { key: 'emergencyContactName', description: 'Emergency contact name', example: 'Jane Doe', syntax: '{{emergencyContactName}}', aliases: ['emergency_contact_name'] },
+      { key: 'emergencyContactPhone', description: 'Emergency contact phone', example: '+91 9876543211', syntax: '{{emergencyContactPhone}}', aliases: ['emergency_contact_phone'] },
+      { key: 'companyName', description: 'Company name from settings', example: 'Acme Corp', syntax: '{{companyName}}', aliases: ['company_name'] },
+      { key: 'currentDate', description: 'Current date (DD/MM/YYYY)', example: '13/02/2026', syntax: '{{currentDate}}', aliases: ['current_date', 'offer_date', 'date'] },
+      { key: 'currentYear', description: 'Current year', example: '2026', syntax: '{{currentYear}}', aliases: ['current_year', 'year'] },
     ];
   }
 
   async createTemplate(
-    file: Express.Multer.File,
     dto: CreateDocumentTemplateDto,
     createdBy: string,
   ) {
-    // Read the .docx file to extract placeholders
-    const content = fs.readFileSync(file.path);
-    const zip = new PizZip(content);
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      delimiters: { start: '{', end: '}' },
-    });
-
-    // Extract placeholders from the template text
-    const text = doc.getFullText();
-    const placeholderRegex = /\{(\w+)\}/g;
+    // Extract {{placeholder}} patterns from HTML content
+    const placeholderRegex = /\{\{(\w+)\}\}/g;
     const placeholders: string[] = [];
     let match: RegExpExecArray | null;
-    while ((match = placeholderRegex.exec(text)) !== null) {
+    while ((match = placeholderRegex.exec(dto.htmlContent)) !== null) {
       if (!placeholders.includes(match[1])) {
         placeholders.push(match[1]);
       }
@@ -429,8 +419,7 @@ export class DocumentService {
         name: dto.name,
         documentType: dto.documentType,
         description: dto.description,
-        filePath: file.path,
-        fileName: file.originalname,
+        htmlContent: dto.htmlContent,
         placeholders: placeholders,
         createdBy,
       },
@@ -462,16 +451,11 @@ export class DocumentService {
       throw new NotFoundException('Template not found');
     }
 
-    // Delete the file
-    if (fs.existsSync(template.filePath)) {
-      fs.unlinkSync(template.filePath);
-    }
-
     await this.prisma.documentTemplate.delete({ where: { id } });
     return { message: 'Template deleted successfully' };
   }
 
-  async getTemplateFile(id: string) {
+  async getTemplateById(id: string) {
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id },
     });
@@ -513,9 +497,6 @@ export class DocumentService {
     const settings = await this.prisma.companySettings.findFirst();
     const companyName = settings?.companyName || 'Company';
 
-    // Read template file
-    const templateContent = fs.readFileSync(template.filePath);
-
     const outputDir = './uploads/documents';
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -530,85 +511,133 @@ export class DocumentService {
     const generated: any[] = [];
     const failed: { employeeId: string; error: string }[] = [];
 
-    for (const employee of employees) {
-      try {
-        const zip = new PizZip(templateContent);
-        const doc = new Docxtemplater(zip, {
-          paragraphLoop: true,
-          linebreaks: true,
-          delimiters: { start: '{', end: '}' },
-        });
+    // Launch browser once for all PDF conversions
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
 
-        // Build template data
-        const data: Record<string, string> = {
-          firstName: employee.firstName || '',
-          lastName: employee.lastName || '',
-          fullName: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
-          email: employee.user?.email || '',
-          phone: employee.phone || '',
-          address: employee.address || '',
-          dateOfBirth: formatDate(employee.dateOfBirth),
-          gender: employee.gender || '',
-          joinDate: formatDate(employee.joinDate),
-          designation: employee.role?.name || '',
-          employeeType: employee.employeeType || '',
-          salary: employee.salary?.toString() || '',
-          bankName: employee.bankName || '',
-          bankAccountNumber: employee.bankAccountNumber || '',
-          ifscCode: employee.bankIfsc || '',
-          emergencyContactName: employee.emergencyContactName || '',
-          emergencyContactPhone: employee.emergencyContactPhone || '',
-          companyName,
-          currentDate: formatDate(now),
-          currentYear: now.getFullYear().toString(),
-        };
+    try {
+      for (const employee of employees) {
+        try {
+          // Build template data with both camelCase and snake_case variants
+          const fullName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+          const dob = formatDate(employee.dateOfBirth);
+          const jDate = formatDate(employee.joinDate);
+          const curDate = formatDate(now);
+          const curYear = now.getFullYear().toString();
+          const designation = employee.role?.name || '';
+          const empEmail = employee.user?.email || '';
 
-        doc.render(data);
+          const data: Record<string, string> = {
+            // camelCase
+            firstName: employee.firstName || '',
+            lastName: employee.lastName || '',
+            fullName,
+            email: empEmail,
+            phone: employee.phone || '',
+            address: employee.address || '',
+            dateOfBirth: dob,
+            gender: employee.gender || '',
+            joinDate: jDate,
+            designation,
+            employeeType: employee.employeeType || '',
+            salary: employee.salary?.toString() || '',
+            bankName: employee.bankName || '',
+            bankAccountNumber: employee.bankAccountNumber || '',
+            ifscCode: employee.bankIfsc || '',
+            emergencyContactName: employee.emergencyContactName || '',
+            emergencyContactPhone: employee.emergencyContactPhone || '',
+            companyName,
+            currentDate: curDate,
+            currentYear: curYear,
 
-        const buf = doc.getZip().generate({
-          type: 'nodebuffer',
-          compression: 'DEFLATE',
-        });
+            // snake_case aliases
+            first_name: employee.firstName || '',
+            last_name: employee.lastName || '',
+            full_name: fullName,
+            date_of_birth: dob,
+            join_date: jDate,
+            employee_type: employee.employeeType || '',
+            bank_name: employee.bankName || '',
+            bank_account_number: employee.bankAccountNumber || '',
+            ifsc_code: employee.bankIfsc || '',
+            emergency_contact_name: employee.emergencyContactName || '',
+            emergency_contact_phone: employee.emergencyContactPhone || '',
+            company_name: companyName,
+            current_date: curDate,
+            current_year: curYear,
 
-        // Save generated document
-        const timestamp = Date.now();
-        const safeFileName = `${template.documentType}-${employee.firstName}-${employee.lastName}-${timestamp}.docx`
-          .replace(/\s+/g, '-');
-        const outputPath = path.join(outputDir, safeFileName);
-        fs.writeFileSync(outputPath, buf);
+            // Common aliases
+            employee_name: fullName,
+            name: fullName,
+            employee_email: empEmail,
+            offer_date: curDate,
+            date: curDate,
+            year: curYear,
+            role: designation,
+            position: designation,
+            joining_date: jDate,
+          };
 
-        // Create Document record
-        const document = await this.prisma.document.create({
-          data: {
+          // Replace {{placeholder}} in HTML content
+          let html = template.htmlContent;
+          for (const [key, value] of Object.entries(data)) {
+            html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+          }
+
+          // Convert HTML to PDF using puppeteer
+          const timestamp = Date.now();
+          const safeFileName = `${template.documentType}-${employee.firstName}-${employee.lastName}-${timestamp}.pdf`
+            .replace(/\s+/g, '-');
+          const outputPath = path.join(outputDir, safeFileName);
+
+          const page = await browser.newPage();
+          await page.setContent(html, { waitUntil: 'networkidle0' });
+          await page.pdf({
+            path: outputPath,
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
+          });
+          await page.close();
+
+          // Create Document record
+          const document = await this.prisma.document.create({
+            data: {
+              employeeId: employee.id,
+              documentType: template.documentType,
+              fileName: `${template.name} - ${employee.firstName} ${employee.lastName}.pdf`,
+              filePath: outputPath,
+              description: `Auto-generated from template: ${template.name}`,
+              releasedBy: generatedBy,
+              releasedAt: now,
+            },
+          });
+
+          // Send notification
+          await this.notificationService.sendNotification({
+            recipientId: employee.userId,
+            subject: 'New Document Released',
+            message: `A new ${template.documentType.replace(/_/g, ' ')} has been released to you.`,
+            type: 'both',
+            notificationType: NotificationType.DOCUMENT_RELEASED,
+          });
+
+          generated.push({
             employeeId: employee.id,
-            documentType: template.documentType,
-            fileName: `${template.name} - ${employee.firstName} ${employee.lastName}.docx`,
-            filePath: outputPath,
-            description: `Auto-generated from template: ${template.name}`,
-            releasedBy: generatedBy,
-            releasedAt: now,
-          },
-        });
-
-        // Send notification
-        await this.notificationService.sendNotification({
-          recipientId: employee.userId,
-          subject: 'New Document Released',
-          message: `A new ${template.documentType.replace(/_/g, ' ')} has been released to you.`,
-          type: 'both',
-        });
-
-        generated.push({
-          employeeId: employee.id,
-          employeeName: `${employee.firstName} ${employee.lastName}`,
-          documentId: document.id,
-        });
-      } catch (err) {
-        failed.push({
-          employeeId: employee.id,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        });
+            employeeName: `${employee.firstName} ${employee.lastName}`,
+            documentId: document.id,
+          });
+        } catch (err) {
+          failed.push({
+            employeeId: employee.id,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          });
+        }
       }
+    } finally {
+      await browser.close();
     }
 
     return {

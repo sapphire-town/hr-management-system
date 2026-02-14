@@ -24,6 +24,7 @@ import {
   Download,
   FileSpreadsheet,
   Trash2,
+  Lock,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -81,6 +82,7 @@ interface PlacementDrive {
   collegeName: string;
   driveDate: string;
   roles: Array<{ name: string; description: string; positions?: number }>;
+  status: string;
   interviewers: Array<{
     id: string;
     interviewer: { id: string; firstName: string; lastName: string };
@@ -188,11 +190,16 @@ export default function MyDrivesPage() {
     // Determine which round to show
     const round1 = student.evaluations.find(e => e.roundNumber === 1);
     const round2 = student.evaluations.find(e => e.roundNumber === 2);
+    const round3 = student.evaluations.find(e => e.roundNumber === 3);
 
     if (!round1) {
       setEvaluationData({ round: 1, status: '', comments: '' });
     } else if (round1.status === 'PASS' && !round2) {
       setEvaluationData({ round: 2, status: '', comments: '' });
+    } else if (round1.status === 'PASS' && round2?.status === 'PASS' && !round3 && isHROrDirector) {
+      setEvaluationData({ round: 3, status: '', comments: '' });
+    } else if (round1.status === 'PASS' && round2?.status === 'PASS' && round3 && isHROrDirector) {
+      setEvaluationData({ round: 3, status: round3.status, comments: round3.comments || '' });
     } else if (round1.status === 'PASS' && round2) {
       setEvaluationData({ round: 2, status: round2.status, comments: round2.comments || '' });
     } else {
@@ -350,6 +357,10 @@ export default function MyDrivesPage() {
     return student.evaluations.find(e => e.roundNumber === 2);
   };
 
+  const getStudentRound3Status = (student: Student) => {
+    return student.evaluations.find(e => e.roundNumber === 3);
+  };
+
   const cardStyle: React.CSSProperties = {
     backgroundColor: '#ffffff',
     borderRadius: '16px',
@@ -358,12 +369,18 @@ export default function MyDrivesPage() {
     overflow: 'hidden',
   };
 
+  // Drive closed state — interviewers cannot modify closed drives
+  const isDriveClosed = selectedDrive?.status === 'CLOSED';
+  const canModify = !isDriveClosed || isHROrDirector;
+
   // Stats calculations
   const totalStudents = students.length;
   const round1Evaluated = students.filter(s => s.evaluations.some(e => e.roundNumber === 1)).length;
   const round1Passed = students.filter(s => s.evaluations.some(e => e.roundNumber === 1 && e.status === 'PASS')).length;
   const round2Evaluated = students.filter(s => s.evaluations.some(e => e.roundNumber === 2)).length;
   const round2Passed = students.filter(s => s.evaluations.some(e => e.roundNumber === 2 && e.status === 'PASS')).length;
+  const round3Evaluated = students.filter(s => s.evaluations.some(e => e.roundNumber === 3)).length;
+  const round3Passed = students.filter(s => s.evaluations.some(e => e.roundNumber === 3 && e.status === 'PASS')).length;
 
   return (
     <DashboardLayout
@@ -371,7 +388,23 @@ export default function MyDrivesPage() {
       description={selectedDrive ? 'Manage students and evaluations' : isHROrDirector ? 'View and manage all placement drives' : 'View placement drives assigned to you'}
       actions={
         selectedDrive && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {isDriveClosed && (
+              <span style={{
+                fontSize: '12px',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                backgroundColor: '#fee2e2',
+                color: '#dc2626',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 500,
+              }}>
+                <Lock style={{ width: 12, height: 12 }} />
+                Drive Closed
+              </span>
+            )}
             <button
               onClick={handleBackToDrives}
               style={{
@@ -391,24 +424,28 @@ export default function MyDrivesPage() {
               <ArrowLeft style={{ width: 16, height: 16 }} />
               Back to Drives
             </button>
-            <Button
-              variant="outline"
-              onClick={() => setShowBulkImportModal(true)}
-            >
-              <Upload style={{ width: 16, height: 16, marginRight: 8 }} />
-              Bulk Import
-            </Button>
-            <Button
-              onClick={() => { setNewStudent({ name: '', email: '', phone: '', college: '', branch: '' }); setShowAddStudentModal(true); }}
-              style={{
-                background: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 50%, #6366f1 100%)',
-                color: '#fff',
-                boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.35)',
-              }}
-            >
-              <Plus style={{ width: 16, height: 16, marginRight: 8 }} />
-              Add Student
-            </Button>
+            {isHROrDirector && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowBulkImportModal(true)}
+                >
+                  <Upload style={{ width: 16, height: 16, marginRight: 8 }} />
+                  Bulk Import
+                </Button>
+                <Button
+                  onClick={() => { setNewStudent({ name: '', email: '', phone: '', college: '', branch: '' }); setShowAddStudentModal(true); }}
+                  style={{
+                    background: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 50%, #6366f1 100%)',
+                    color: '#fff',
+                    boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.35)',
+                  }}
+                >
+                  <Plus style={{ width: 16, height: 16, marginRight: 8 }} />
+                  Add Student
+                </Button>
+              </>
+            )}
           </div>
         )
       }
@@ -489,6 +526,24 @@ export default function MyDrivesPage() {
                               >
                                 {isUpcoming ? 'Upcoming' : 'Completed'}
                               </span>
+                              {drive.status === 'CLOSED' && (
+                                <span
+                                  style={{
+                                    fontSize: '12px',
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    backgroundColor: '#fee2e2',
+                                    color: '#dc2626',
+                                    fontWeight: 500,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                >
+                                  <Lock style={{ width: '12px', height: '12px' }} />
+                                  Closed
+                                </span>
+                              )}
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '12px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6b7280', fontSize: '14px' }}>
@@ -567,6 +622,14 @@ export default function MyDrivesPage() {
                 <p style={{ fontSize: '24px', fontWeight: 700, color: '#059669', margin: '4px 0 0 0' }}>{round2Passed}</p>
               </div>
             </div>
+            {isHROrDirector && (
+              <div style={cardStyle}>
+                <div style={{ padding: '16px' }}>
+                  <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>Round 3 (Final)</p>
+                  <p style={{ fontSize: '24px', fontWeight: 700, color: '#059669', margin: '4px 0 0 0' }}>{round3Passed}/{round3Evaluated}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: selectedStudent ? '1fr 400px' : '1fr', gap: '24px' }}>
@@ -603,6 +666,11 @@ export default function MyDrivesPage() {
                         </th>
                         {isHROrDirector && (
                           <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
+                            Round 3
+                          </th>
+                        )}
+                        {isHROrDirector && (
+                          <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
                             Actions
                           </th>
                         )}
@@ -612,6 +680,7 @@ export default function MyDrivesPage() {
                       {students.map((student) => {
                         const round1 = getStudentRound1Status(student);
                         const round2 = getStudentRound2Status(student);
+                        const round3 = getStudentRound3Status(student);
                         const isSelected = selectedStudent?.id === student.id;
 
                         return (
@@ -704,6 +773,32 @@ export default function MyDrivesPage() {
                                 <span style={{ fontSize: '12px', color: '#9ca3af' }}>Pending</span>
                               )}
                             </td>
+                            {isHROrDirector && (
+                              <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                {round2?.status !== 'PASS' ? (
+                                  <span style={{ fontSize: '12px', color: '#d1d5db' }}>-</span>
+                                ) : round3 ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '4px 10px',
+                                      borderRadius: '6px',
+                                      fontSize: '12px',
+                                      fontWeight: 500,
+                                      backgroundColor: statusConfig[round3.status].bg,
+                                      color: statusConfig[round3.status].color,
+                                    }}
+                                  >
+                                    {React.createElement(statusConfig[round3.status].icon, { style: { width: '12px', height: '12px' } })}
+                                    {statusConfig[round3.status].label}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '12px', color: '#9ca3af' }}>Pending</span>
+                                )}
+                              </td>
+                            )}
                             {isHROrDirector && (
                               <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                                 <button
@@ -859,11 +954,32 @@ export default function MyDrivesPage() {
 
                   {/* Evaluation Form */}
                   <div>
-                    <h5 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600, color: '#374151' }}>
-                      Submit Evaluation - Round {evaluationData.round}
-                    </h5>
+                    {!canModify ? (
+                      <div style={{ padding: '16px', backgroundColor: '#fef2f2', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Lock style={{ width: '18px', height: '18px', color: '#dc2626', flexShrink: 0 }} />
+                        <div>
+                          <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#991b1b' }}>Drive Closed</p>
+                          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#b91c1c' }}>
+                            This drive has been closed. You can view records but cannot modify evaluations.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                    <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <h5 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#374151' }}>
+                        {isHROrDirector && selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round)
+                          ? `Override Evaluation - Round ${evaluationData.round}`
+                          : `Submit Evaluation - Round ${evaluationData.round}`}
+                      </h5>
+                      {isHROrDirector && selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round) && (
+                        <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 500 }}>
+                          Override
+                        </span>
+                      )}
+                    </div>
 
-                    {evaluationData.round === 2 && !getStudentRound1Status(selectedStudent)?.status && (
+                    {evaluationData.round === 2 && !getStudentRound1Status(selectedStudent)?.status && !isHROrDirector && (
                       <div style={{ padding: '12px', backgroundColor: '#fef3c7', borderRadius: '8px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <AlertCircle style={{ width: '16px', height: '16px', color: '#d97706' }} />
                         <span style={{ fontSize: '13px', color: '#92400e' }}>
@@ -872,11 +988,24 @@ export default function MyDrivesPage() {
                       </div>
                     )}
 
-                    {evaluationData.round === 2 && getStudentRound1Status(selectedStudent)?.status !== 'PASS' && getStudentRound1Status(selectedStudent) && (
+                    {evaluationData.round === 2 && getStudentRound1Status(selectedStudent)?.status !== 'PASS' && getStudentRound1Status(selectedStudent) && !isHROrDirector && (
                       <div style={{ padding: '12px', backgroundColor: '#fee2e2', borderRadius: '8px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <XCircle style={{ width: '16px', height: '16px', color: '#dc2626' }} />
                         <span style={{ fontSize: '13px', color: '#991b1b' }}>
                           Student did not pass Round 1
+                        </span>
+                      </div>
+                    )}
+
+
+                    {isHROrDirector && evaluationData.round >= 2 && (
+                      (evaluationData.round === 2 && getStudentRound1Status(selectedStudent)?.status !== 'PASS') ||
+                      (evaluationData.round === 3 && getStudentRound2Status(selectedStudent)?.status !== 'PASS')
+                    ) && (
+                      <div style={{ padding: '12px', backgroundColor: '#eff6ff', borderRadius: '8px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <AlertCircle style={{ width: '16px', height: '16px', color: '#2563eb' }} />
+                        <span style={{ fontSize: '13px', color: '#1e40af' }}>
+                          Overriding round progression — previous round not passed
                         </span>
                       </div>
                     )}
@@ -902,7 +1031,7 @@ export default function MyDrivesPage() {
                         </button>
                         <button
                           onClick={() => setEvaluationData({ ...evaluationData, round: 2 })}
-                          disabled={getStudentRound1Status(selectedStudent)?.status !== 'PASS'}
+                          disabled={!isHROrDirector && getStudentRound1Status(selectedStudent)?.status !== 'PASS'}
                           style={{
                             flex: 1,
                             padding: '10px',
@@ -912,12 +1041,32 @@ export default function MyDrivesPage() {
                             color: evaluationData.round === 2 ? '#7c3aed' : '#6b7280',
                             fontSize: '13px',
                             fontWeight: 500,
-                            cursor: getStudentRound1Status(selectedStudent)?.status !== 'PASS' ? 'not-allowed' : 'pointer',
-                            opacity: getStudentRound1Status(selectedStudent)?.status !== 'PASS' ? 0.5 : 1,
+                            cursor: !isHROrDirector && getStudentRound1Status(selectedStudent)?.status !== 'PASS' ? 'not-allowed' : 'pointer',
+                            opacity: !isHROrDirector && getStudentRound1Status(selectedStudent)?.status !== 'PASS' ? 0.5 : 1,
                           }}
                         >
                           Round 2
                         </button>
+                        {isHROrDirector && (
+                          <button
+                            onClick={() => setEvaluationData({ ...evaluationData, round: 3 })}
+                            disabled={getStudentRound2Status(selectedStudent)?.status !== 'PASS'}
+                            style={{
+                              flex: 1,
+                              padding: '10px',
+                              borderRadius: '8px',
+                              border: evaluationData.round === 3 ? '2px solid #7c3aed' : '1px solid #e5e7eb',
+                              backgroundColor: evaluationData.round === 3 ? '#f5f3ff' : '#ffffff',
+                              color: evaluationData.round === 3 ? '#7c3aed' : '#6b7280',
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              cursor: getStudentRound2Status(selectedStudent)?.status !== 'PASS' ? 'not-allowed' : 'pointer',
+                              opacity: getStudentRound2Status(selectedStudent)?.status !== 'PASS' ? 0.5 : 1,
+                            }}
+                          >
+                            Round 3
+                          </button>
+                        )}
                       </div>
 
                       {/* Status Selection */}
@@ -1005,11 +1154,15 @@ export default function MyDrivesPage() {
                         ) : (
                           <>
                             <Save style={{ width: '16px', height: '16px' }} />
-                            Save Evaluation
+                            {isHROrDirector && selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round)
+                              ? 'Override Evaluation'
+                              : 'Save Evaluation'}
                           </>
                         )}
                       </button>
                     </div>
+                    </>
+                    )}
                   </div>
                 </div>
               </div>

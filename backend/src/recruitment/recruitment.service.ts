@@ -196,6 +196,85 @@ export class RecruitmentService {
     return this.prisma.placementDrive.delete({ where: { id } });
   }
 
+  async closeDrive(id: string) {
+    const drive = await this.prisma.placementDrive.findUnique({ where: { id } });
+    if (!drive) {
+      throw new NotFoundException('Placement drive not found');
+    }
+    if (drive.status === 'CLOSED') {
+      throw new BadRequestException('Drive is already closed');
+    }
+
+    const updated = await this.prisma.placementDrive.update({
+      where: { id },
+      data: { status: 'CLOSED' },
+      include: {
+        interviewers: {
+          include: {
+            interviewer: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        _count: { select: { students: true } },
+      },
+    });
+
+    // Notify all assigned interviewers that the drive has been closed
+    const interviewerIds = updated.interviewers.map((i) => i.interviewer.id);
+    if (interviewerIds.length > 0) {
+      for (const interviewerId of interviewerIds) {
+        try {
+          const interviewerUser = await this.prisma.user.findFirst({
+            where: { employee: { id: interviewerId } },
+          });
+          if (interviewerUser) {
+            await this.prisma.notification.create({
+              data: {
+                recipientId: interviewerUser.id,
+                subject: `Drive Closed: ${updated.collegeName}`,
+                message: `The placement drive for ${updated.collegeName} has been closed. You can still view records but cannot make modifications.`,
+                type: 'DRIVE_UPDATE' as any,
+                channel: 'IN_APP' as any,
+                metadata: { driveId: id },
+                sentAt: new Date(),
+              },
+            });
+          }
+        } catch (error) {
+          console.error('Failed to notify interviewer about drive closure:', error);
+        }
+      }
+    }
+
+    return updated;
+  }
+
+  async reopenDrive(id: string) {
+    const drive = await this.prisma.placementDrive.findUnique({ where: { id } });
+    if (!drive) {
+      throw new NotFoundException('Placement drive not found');
+    }
+    if (drive.status === 'OPEN') {
+      throw new BadRequestException('Drive is already open');
+    }
+
+    return this.prisma.placementDrive.update({
+      where: { id },
+      data: { status: 'OPEN' },
+      include: {
+        interviewers: {
+          include: {
+            interviewer: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        _count: { select: { students: true } },
+      },
+    });
+  }
+
   // ==================== INTERVIEWERS ====================
 
   async assignInterviewers(driveId: string, dto: AssignInterviewersDto) {
@@ -295,10 +374,15 @@ export class RecruitmentService {
 
   // ==================== STUDENTS ====================
 
-  async addStudent(driveId: string, dto: CreateStudentDto) {
+  async addStudent(driveId: string, dto: CreateStudentDto, userRole?: UserRole) {
     const drive = await this.prisma.placementDrive.findUnique({ where: { id: driveId } });
     if (!drive) {
       throw new NotFoundException('Placement drive not found');
+    }
+
+    const isPrivileged = userRole === UserRole.HR_HEAD || userRole === UserRole.DIRECTOR;
+    if (drive.status === 'CLOSED' && !isPrivileged) {
+      throw new BadRequestException('This drive is closed. Only HR/Director can modify closed drives.');
     }
 
     return this.prisma.student.create({
@@ -312,10 +396,15 @@ export class RecruitmentService {
     });
   }
 
-  async bulkAddStudents(driveId: string, dto: BulkCreateStudentsDto) {
+  async bulkAddStudents(driveId: string, dto: BulkCreateStudentsDto, userRole?: UserRole) {
     const drive = await this.prisma.placementDrive.findUnique({ where: { id: driveId } });
     if (!drive) {
       throw new NotFoundException('Placement drive not found');
+    }
+
+    const isPrivileged = userRole === UserRole.HR_HEAD || userRole === UserRole.DIRECTOR;
+    if (drive.status === 'CLOSED' && !isPrivileged) {
+      throw new BadRequestException('This drive is closed. Only HR/Director can modify closed drives.');
     }
 
     const result = await this.prisma.student.createMany({
@@ -381,6 +470,16 @@ export class RecruitmentService {
     // HR_HEAD and DIRECTOR can evaluate without being assigned to the drive
     const isPrivileged = userRole === UserRole.HR_HEAD || userRole === UserRole.DIRECTOR;
 
+    // Block non-privileged users from modifying closed drives
+    if ((student.drive as any).status === 'CLOSED' && !isPrivileged) {
+      throw new BadRequestException('This drive is closed. Only HR/Director can modify closed drives.');
+    }
+
+    // Round 3 is restricted to HR/Director only
+    if (roundNumber === 3 && !isPrivileged) {
+      throw new BadRequestException('Round 3 evaluation is restricted to HR/Director only.');
+    }
+
     if (!isPrivileged) {
       // Check if evaluator is assigned to this drive
       const isAssigned = await this.prisma.placementDriveInterviewer.findFirst({
@@ -395,8 +494,8 @@ export class RecruitmentService {
       }
     }
 
-    // For round 2, check if round 1 passed
-    if (roundNumber === 2) {
+    // For round 2, check if round 1 passed (HR/Director can override)
+    if (roundNumber === 2 && !isPrivileged) {
       const round1 = await this.prisma.roundEvaluation.findFirst({
         where: {
           studentId,
@@ -407,6 +506,21 @@ export class RecruitmentService {
 
       if (!round1) {
         throw new BadRequestException('Student must pass round 1 before round 2 evaluation');
+      }
+    }
+
+    // For round 3, check if round 2 passed (HR/Director can override)
+    if (roundNumber === 3 && !isPrivileged) {
+      const round2 = await this.prisma.roundEvaluation.findFirst({
+        where: {
+          studentId,
+          roundNumber: 2,
+          status: 'PASS',
+        },
+      });
+
+      if (!round2) {
+        throw new BadRequestException('Student must pass round 2 before round 3 evaluation');
       }
     }
 
@@ -506,6 +620,12 @@ export class RecruitmentService {
     const round2Passed = drive.students.filter((s) =>
       s.evaluations.some((e) => e.roundNumber === 2 && e.status === 'PASS')
     ).length;
+    const round3Evaluated = drive.students.filter((s) =>
+      s.evaluations.some((e) => e.roundNumber === 3)
+    ).length;
+    const round3Passed = drive.students.filter((s) =>
+      s.evaluations.some((e) => e.roundNumber === 3 && e.status === 'PASS')
+    ).length;
 
     return {
       driveId,
@@ -525,7 +645,13 @@ export class RecruitmentService {
         failed: round2Evaluated - round2Passed,
         pending: round1Passed - round2Evaluated,
       },
-      finalSelected: round2Passed,
+      round3: {
+        evaluated: round3Evaluated,
+        passed: round3Passed,
+        failed: round3Evaluated - round3Passed,
+        pending: round2Passed - round3Evaluated,
+      },
+      finalSelected: round3Passed,
     };
   }
 
@@ -537,7 +663,7 @@ export class RecruitmentService {
       }),
       this.prisma.student.count(),
       this.prisma.roundEvaluation.count({
-        where: { roundNumber: 2, status: 'PASS' },
+        where: { roundNumber: 3, status: 'PASS' },
       }),
     ]);
 
@@ -577,10 +703,15 @@ export class RecruitmentService {
     return cellValue;
   }
 
-  async importStudentsFromExcel(driveId: string, fileBuffer: Buffer, evaluatorId?: string) {
+  async importStudentsFromExcel(driveId: string, fileBuffer: Buffer, evaluatorId?: string, userRole?: UserRole) {
     const drive = await this.prisma.placementDrive.findUnique({ where: { id: driveId } });
     if (!drive) {
       throw new NotFoundException('Placement drive not found');
+    }
+
+    const isPrivileged = userRole === UserRole.HR_HEAD || userRole === UserRole.DIRECTOR;
+    if ((drive as any).status === 'CLOSED' && !isPrivileged) {
+      throw new BadRequestException('This drive is closed. Only HR/Director can modify closed drives.');
     }
 
     const workbook = new ExcelJS.Workbook();
@@ -609,6 +740,7 @@ export class RecruitmentService {
     const students: Array<{
       name: string; email: string; phone: string; studentData: Record<string, any>;
       round1Result?: string; round1Comments?: string; round2Result?: string; round2Comments?: string;
+      round3Result?: string; round3Comments?: string;
     }> = [];
     const results: Array<{ row: number; name: string; status: 'success' | 'failed'; message?: string }> = [];
 
@@ -616,7 +748,8 @@ export class RecruitmentService {
     const coreFields = new Set(['name', 'student name', 'student_name', 'fullname', 'full name', 'full_name',
       'email', 'email address', 'email_address', 'phone', 'mobile', 'phone number', 'phone_number', 'contact',
       'round 1 result', 'round1result', 'round_1_result', 'round 1 comments', 'round1comments', 'round_1_comments',
-      'round 2 result', 'round2result', 'round_2_result', 'round 2 comments', 'round2comments', 'round_2_comments']);
+      'round 2 result', 'round2result', 'round_2_result', 'round 2 comments', 'round2comments', 'round_2_comments',
+      'round 3 result', 'round3result', 'round_3_result', 'round 3 comments', 'round3comments', 'round_3_comments']);
 
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
@@ -662,6 +795,12 @@ export class RecruitmentService {
       const round2Comments = getString(
         record['round 2 comments'] || record.round2comments || record.round_2_comments,
       );
+      const round3Result = getString(
+        record['round 3 result'] || record.round3result || record.round_3_result,
+      ).toUpperCase();
+      const round3Comments = getString(
+        record['round 3 comments'] || record.round3comments || record.round_3_comments,
+      );
 
       // Validate round results if provided
       if (round1Result && !VALID_ROUND_STATUSES.includes(round1Result)) {
@@ -672,12 +811,24 @@ export class RecruitmentService {
         results.push({ row: rowNumber, name, status: 'failed', message: `Invalid Round 2 Result: "${round2Result}". Must be PASS, FAIL, or ON_HOLD` });
         return;
       }
+      if (round3Result && !VALID_ROUND_STATUSES.includes(round3Result)) {
+        results.push({ row: rowNumber, name, status: 'failed', message: `Invalid Round 3 Result: "${round3Result}". Must be PASS, FAIL, or ON_HOLD` });
+        return;
+      }
       if (round2Result && !round1Result) {
         results.push({ row: rowNumber, name, status: 'failed', message: 'Round 2 Result requires Round 1 Result' });
         return;
       }
       if (round2Result && round1Result !== 'PASS') {
         results.push({ row: rowNumber, name, status: 'failed', message: 'Round 2 Result requires Round 1 to be PASS' });
+        return;
+      }
+      if (round3Result && !round2Result) {
+        results.push({ row: rowNumber, name, status: 'failed', message: 'Round 3 Result requires Round 2 Result' });
+        return;
+      }
+      if (round3Result && round2Result !== 'PASS') {
+        results.push({ row: rowNumber, name, status: 'failed', message: 'Round 3 Result requires Round 2 to be PASS' });
         return;
       }
 
@@ -697,6 +848,8 @@ export class RecruitmentService {
         round1Comments: round1Comments || undefined,
         round2Result: round2Result || undefined,
         round2Comments: round2Comments || undefined,
+        round3Result: round3Result || undefined,
+        round3Comments: round3Comments || undefined,
       });
       results.push({ row: rowNumber, name, status: 'success' });
     });
@@ -759,7 +912,7 @@ export class RecruitmentService {
       insertedCount = result.count;
 
       // Create RoundEvaluation records for students with evaluation data
-      const studentsWithEvals = toInsert.filter(s => s.round1Result || s.round2Result);
+      const studentsWithEvals = toInsert.filter(s => s.round1Result || s.round2Result || s.round3Result);
       if (studentsWithEvals.length > 0 && evaluatorId) {
         // Fetch inserted students by email to get their IDs
         const insertedStudents = await this.prisma.student.findMany({
@@ -802,6 +955,20 @@ export class RecruitmentService {
               },
             });
           }
+
+          // Create Round 3 evaluation
+          if (student.round3Result) {
+            await this.prisma.roundEvaluation.create({
+              data: {
+                studentId,
+                driveId,
+                roundNumber: 3,
+                evaluatorId,
+                status: student.round3Result as any,
+                comments: student.round3Comments || null,
+              },
+            });
+          }
         }
       }
 
@@ -839,6 +1006,8 @@ export class RecruitmentService {
       { header: 'Round 1 Comments', key: 'round1Comments', width: 30 },
       { header: 'Round 2 Result', key: 'round2Result', width: 16 },
       { header: 'Round 2 Comments', key: 'round2Comments', width: 30 },
+      { header: 'Round 3 Result', key: 'round3Result', width: 16 },
+      { header: 'Round 3 Comments', key: 'round3Comments', width: 30 },
     ];
 
     // Style header row
@@ -865,6 +1034,8 @@ export class RecruitmentService {
       round1Comments: 'Good technical skills',
       round2Result: 'PASS',
       round2Comments: 'Strong communication',
+      round3Result: 'PASS',
+      round3Comments: 'Excellent overall fit',
     });
     worksheet.addRow({
       name: 'Priya Sharma',
@@ -878,6 +1049,8 @@ export class RecruitmentService {
       round1Comments: 'Needs follow-up',
       round2Result: '',
       round2Comments: '',
+      round3Result: '',
+      round3Comments: '',
     });
 
     // Instructions sheet
@@ -908,6 +1081,8 @@ export class RecruitmentService {
       { column: 'Round 1 Comments', description: 'Comments/feedback for round 1 evaluation', required: 'No' },
       { column: 'Round 2 Result', description: 'Round 2 evaluation result: PASS, FAIL, or ON_HOLD (requires Round 1 PASS)', required: 'No' },
       { column: 'Round 2 Comments', description: 'Comments/feedback for round 2 evaluation', required: 'No' },
+      { column: 'Round 3 Result', description: 'Round 3 evaluation result: PASS, FAIL, or ON_HOLD (requires Round 2 PASS)', required: 'No' },
+      { column: 'Round 3 Comments', description: 'Comments/feedback for round 3 evaluation', required: 'No' },
       { column: '', description: '', required: '' },
       { column: 'Note', description: 'You can add any additional columns. Extra columns will be stored as student data.', required: '' },
     ];

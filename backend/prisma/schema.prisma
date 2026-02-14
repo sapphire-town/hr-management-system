@@ -395,8 +395,7 @@ model DocumentTemplate {
   name         String
   documentType String
   description  String?
-  filePath     String
-  fileName     String
+  htmlContent  String
   placeholders Json     @default("[]")
   createdBy    String
   createdAt    DateTime @default(now())
@@ -479,6 +478,7 @@ model PlacementDrive {
   collegeName   String
   driveDate     DateTime
   roles         Json     // Array of role objects with descriptions
+  status        String   @default("OPEN") // OPEN or CLOSED
   createdBy     String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

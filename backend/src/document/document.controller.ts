@@ -41,10 +41,6 @@ if (!existsSync(uploadsDir)) {
   mkdirSync(uploadsDir, { recursive: true });
 }
 
-const templatesDir = './uploads/templates';
-if (!existsSync(templatesDir)) {
-  mkdirSync(templatesDir, { recursive: true });
-}
 
 const storage = diskStorage({
   destination: './uploads/documents',
@@ -55,13 +51,6 @@ const storage = diskStorage({
   },
 });
 
-const templateStorage = diskStorage({
-  destination: './uploads/templates',
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, `template-${uniqueSuffix}.docx`);
-  },
-});
 
 @ApiTags('Documents')
 @ApiBearerAuth()
@@ -86,8 +75,14 @@ export class DocumentController {
   ) {
     const document = await this.documentService.downloadDocument(id, req.user.employeeId);
     const file = createReadStream(join(process.cwd(), document.filePath));
+    const ext = document.fileName.split('.').pop()?.toLowerCase();
+    const contentTypes: Record<string, string> = {
+      html: 'text/html',
+      pdf: 'application/pdf',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
     res.set({
-      'Content-Type': 'application/octet-stream',
+      'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
       'Content-Disposition': `attachment; filename="${document.fileName}"`,
     });
     return new StreamableFile(file);
@@ -252,21 +247,15 @@ export class DocumentController {
 
   @Post('templates')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
-  @ApiOperation({ summary: 'Upload a new document template' })
-  @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('template', { storage: templateStorage }))
+  @ApiOperation({ summary: 'Create a new HTML document template' })
   async createTemplate(
     @Request() req: any,
     @Body() dto: CreateDocumentTemplateDto,
-    @UploadedFile() file: Express.Multer.File,
   ) {
-    if (!file) {
-      throw new BadRequestException('Template file (.docx) is required');
+    if (!dto.htmlContent || dto.htmlContent.trim().length === 0) {
+      throw new BadRequestException('HTML content is required');
     }
-    if (!file.originalname.endsWith('.docx')) {
-      throw new BadRequestException('Only .docx files are supported');
-    }
-    return this.documentService.createTemplate(file, dto, req.user.employeeId);
+    return this.documentService.createTemplate(dto, req.user.employeeId);
   }
 
   @Delete('templates/:id')
@@ -276,26 +265,11 @@ export class DocumentController {
     return this.documentService.deleteTemplate(id);
   }
 
-  @Get('templates/:id/download')
+  @Get('templates/:id/preview')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
-  @ApiOperation({ summary: 'Download a template file' })
-  async downloadTemplate(
-    @Param('id') id: string,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const template = await this.documentService.getTemplateFile(id);
-    const filePath = join(process.cwd(), template.filePath);
-
-    if (!existsSync(filePath)) {
-      throw new BadRequestException('Template file not found on server');
-    }
-
-    const file = createReadStream(filePath);
-    res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'Content-Disposition': `attachment; filename="${template.fileName}"`,
-    });
-    return new StreamableFile(file);
+  @ApiOperation({ summary: 'Get template HTML content for preview' })
+  async previewTemplate(@Param('id') id: string) {
+    return this.documentService.getTemplateById(id);
   }
 
   @Post('templates/:id/generate')

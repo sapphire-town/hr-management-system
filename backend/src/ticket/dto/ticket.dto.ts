@@ -11,10 +11,9 @@ export class CreateTicketDto {
   @IsString()
   description: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  category?: string;
+  @ApiProperty({ description: 'Employee ID to assign the ticket to' })
+  @IsUUID()
+  assignedTo: string;
 }
 
 export class UpdateTicketStatusDto {
@@ -34,11 +33,6 @@ export class TicketFilterDto {
   @IsOptional()
   @IsEnum(TicketStatus)
   status?: TicketStatus;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  category?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
