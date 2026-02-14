@@ -14,13 +14,19 @@ import {
   Upload,
   X,
   Palette,
+  CalendarDays,
+  Plus,
+  Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/store/auth-store';
-import { settingsAPI } from '@/lib/api-client';
+import { settingsAPI, attendanceAPI } from '@/lib/api-client';
 
 interface LeavePolicies {
   sickLeavePerYear: number;
@@ -73,7 +79,15 @@ export default function SettingsPage() {
   const { user } = useAuthStore();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'company' | 'leave' | 'notifications' | 'payslip'>('company');
+  const [activeTab, setActiveTab] = React.useState<'company' | 'leave' | 'holidays' | 'notifications' | 'payslip'>('company');
+
+  // Holiday management state
+  const [holidays, setHolidays] = React.useState<any[]>([]);
+  const [holidaysLoading, setHolidaysLoading] = React.useState(false);
+  const [showHolidayModal, setShowHolidayModal] = React.useState(false);
+  const [editingHoliday, setEditingHoliday] = React.useState<any>(null);
+  const [holidayForm, setHolidayForm] = React.useState({ date: '', name: '', description: '' });
+  const [holidayYear, setHolidayYear] = React.useState(new Date().getFullYear());
 
   // Form states
   const [companyName, setCompanyName] = React.useState('');
@@ -245,6 +259,70 @@ export default function SettingsPage() {
     }
   };
 
+  // Holiday CRUD
+  const fetchHolidays = React.useCallback(async () => {
+    try {
+      setHolidaysLoading(true);
+      const response = await attendanceAPI.getHolidays(holidayYear);
+      setHolidays(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Error fetching holidays:', error);
+    } finally {
+      setHolidaysLoading(false);
+    }
+  }, [holidayYear]);
+
+  React.useEffect(() => {
+    if (canAccessSettings && activeTab === 'holidays') {
+      fetchHolidays();
+    }
+  }, [canAccessSettings, activeTab, fetchHolidays]);
+
+  const handleSaveHoliday = async () => {
+    try {
+      setSaving(true);
+      if (editingHoliday) {
+        await attendanceAPI.updateHoliday(editingHoliday.id, holidayForm);
+      } else {
+        await attendanceAPI.createHoliday(holidayForm);
+      }
+      setShowHolidayModal(false);
+      setEditingHoliday(null);
+      setHolidayForm({ date: '', name: '', description: '' });
+      fetchHolidays();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to save holiday');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this holiday?')) return;
+    try {
+      await attendanceAPI.deleteHoliday(id);
+      fetchHolidays();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to delete holiday');
+    }
+  };
+
+  const openEditHoliday = (holiday: any) => {
+    setEditingHoliday(holiday);
+    setHolidayForm({
+      date: holiday.date?.split('T')[0] || '',
+      name: holiday.name || '',
+      description: holiday.description || '',
+    });
+    setShowHolidayModal(true);
+  };
+
+  const openAddHoliday = () => {
+    setEditingHoliday(null);
+    setHolidayForm({ date: '', name: '', description: '' });
+    setShowHolidayModal(true);
+  };
+
   if (!canAccessSettings) {
     return (
       <DashboardLayout title="Settings" description="Access restricted">
@@ -341,6 +419,28 @@ export default function SettingsPage() {
           >
             <Briefcase style={{ width: 18, height: 18 }} />
             Leave Policies
+          </button>
+          <button
+            onClick={() => setActiveTab('holidays')}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              background: activeTab === 'holidays' ? 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)' : 'transparent',
+              color: activeTab === 'holidays' ? '#fff' : '#374151',
+              border: 'none',
+              borderRadius: 12,
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 500,
+              textAlign: 'left' as const,
+              marginBottom: 4,
+            }}
+          >
+            <CalendarDays style={{ width: 18, height: 18 }} />
+            Official Holidays
           </button>
           <button
             onClick={() => setActiveTab('notifications')}
@@ -639,6 +739,298 @@ export default function SettingsPage() {
                   <Save style={{ width: 16, height: 16, marginRight: 8 }} />
                   {saving ? 'Saving...' : 'Save Leave Policies'}
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Official Holidays Tab */}
+          {activeTab === 'holidays' && (
+            <div style={{
+              background: '#fff',
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 12,
+                    background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <CalendarDays style={{ width: 24, height: 24, color: '#fff' }} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', margin: 0 }}>
+                      Official Holidays
+                    </h2>
+                    <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+                      Manage company holidays — these dates are excluded from leave calculations
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={openAddHoliday}
+                  style={{
+                    background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+                    color: '#fff',
+                  }}
+                >
+                  <Plus style={{ width: 16, height: 16, marginRight: 8 }} />
+                  Add Holiday
+                </Button>
+              </div>
+
+              {/* Year Selector */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 16,
+                marginBottom: 20,
+                padding: '12px 0',
+              }}>
+                <button
+                  onClick={() => setHolidayYear(holidayYear - 1)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    border: '1px solid #e5e7eb',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <ChevronLeft style={{ width: 18, height: 18, color: '#374151' }} />
+                </button>
+                <span style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', minWidth: 60, textAlign: 'center' }}>
+                  {holidayYear}
+                </span>
+                <button
+                  onClick={() => setHolidayYear(holidayYear + 1)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    border: '1px solid #e5e7eb',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <ChevronRight style={{ width: 18, height: 18, color: '#374151' }} />
+                </button>
+              </div>
+
+              {/* Holidays Table */}
+              {holidaysLoading ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>Loading holidays...</div>
+              ) : holidays.length === 0 ? (
+                <div style={{
+                  padding: 40,
+                  textAlign: 'center',
+                  background: '#fefce8',
+                  borderRadius: 12,
+                  border: '1px solid #fde68a',
+                }}>
+                  <CalendarDays style={{ width: 40, height: 40, color: '#d97706', margin: '0 auto 12px' }} />
+                  <p style={{ fontWeight: 500, color: '#92400e', margin: '0 0 4px' }}>No holidays added for {holidayYear}</p>
+                  <p style={{ fontSize: 13, color: '#a16207', margin: 0 }}>Click "Add Holiday" to add official holidays</p>
+                </div>
+              ) : (
+                <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f9fafb' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Date</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Day</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Holiday Name</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Description</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#374151', borderBottom: '1px solid #e5e7eb' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {holidays
+                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                        .map((holiday: any, index: number) => {
+                          const holidayDate = new Date(holiday.date);
+                          const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][holidayDate.getDay()];
+                          const isPast = holidayDate < new Date(new Date().setHours(0, 0, 0, 0));
+                          return (
+                            <tr
+                              key={holiday.id}
+                              style={{
+                                borderBottom: index < holidays.length - 1 ? '1px solid #e5e7eb' : 'none',
+                                background: isPast ? '#f9fafb' : '#fff',
+                                opacity: isPast ? 0.7 : 1,
+                              }}
+                            >
+                              <td style={{ padding: '12px 16px', fontSize: 14, color: '#1e293b', fontWeight: 500 }}>
+                                {holidayDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </td>
+                              <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
+                                {dayName}
+                              </td>
+                              <td style={{ padding: '12px 16px', fontSize: 14, color: '#1e293b', fontWeight: 500 }}>
+                                {holiday.name}
+                              </td>
+                              <td style={{ padding: '12px 16px', fontSize: 14, color: '#64748b' }}>
+                                {holiday.description || '-'}
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                  <button
+                                    onClick={() => openEditHoliday(holiday)}
+                                    style={{
+                                      width: 32,
+                                      height: 32,
+                                      borderRadius: 8,
+                                      border: '1px solid #e5e7eb',
+                                      background: '#fff',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                    title="Edit"
+                                  >
+                                    <Pencil style={{ width: 14, height: 14, color: '#6b7280' }} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteHoliday(holiday.id)}
+                                    style={{
+                                      width: 32,
+                                      height: 32,
+                                      borderRadius: 8,
+                                      border: '1px solid #fecaca',
+                                      background: '#fef2f2',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                    title="Delete"
+                                  >
+                                    <Trash2 style={{ width: 14, height: 14, color: '#dc2626' }} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Holiday Count */}
+              {holidays.length > 0 && (
+                <div style={{ marginTop: 16, fontSize: 13, color: '#64748b', textAlign: 'right' }}>
+                  Total: {holidays.length} holiday{holidays.length !== 1 ? 's' : ''} in {holidayYear}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Add/Edit Holiday Modal */}
+          {showHolidayModal && (
+            <div style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 50,
+            }}>
+              <div style={{
+                background: '#fff',
+                borderRadius: 16,
+                padding: 24,
+                width: 420,
+                maxWidth: '90vw',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 600, color: '#1e293b', margin: 0 }}>
+                    {editingHoliday ? 'Edit Holiday' : 'Add Holiday'}
+                  </h3>
+                  <button
+                    onClick={() => { setShowHolidayModal(false); setEditingHoliday(null); }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: '#f3f4f6',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <X style={{ width: 16, height: 16, color: '#6b7280' }} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div>
+                    <Label>Date *</Label>
+                    <Input
+                      type="date"
+                      value={holidayForm.date}
+                      onChange={(e) => setHolidayForm({ ...holidayForm, date: e.target.value })}
+                      style={{ marginTop: 6 }}
+                    />
+                  </div>
+                  <div>
+                    <Label>Holiday Name *</Label>
+                    <Input
+                      value={holidayForm.name}
+                      onChange={(e) => setHolidayForm({ ...holidayForm, name: e.target.value })}
+                      placeholder="e.g., Republic Day"
+                      style={{ marginTop: 6 }}
+                    />
+                  </div>
+                  <div>
+                    <Label>Description (optional)</Label>
+                    <Input
+                      value={holidayForm.description}
+                      onChange={(e) => setHolidayForm({ ...holidayForm, description: e.target.value })}
+                      placeholder="Optional description"
+                      style={{ marginTop: 6 }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+                  <Button
+                    variant="outline"
+                    onClick={() => { setShowHolidayModal(false); setEditingHoliday(null); }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveHoliday}
+                    disabled={saving || !holidayForm.date || !holidayForm.name}
+                    style={{
+                      background: 'linear-gradient(135deg, #d97706 0%, #f59e0b 100%)',
+                      color: '#fff',
+                    }}
+                  >
+                    <Save style={{ width: 16, height: 16, marginRight: 8 }} />
+                    {saving ? 'Saving...' : editingHoliday ? 'Update Holiday' : 'Add Holiday'}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

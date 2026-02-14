@@ -41,7 +41,7 @@ coverage/
 .nyc_output/
 
 # Prisma
-prisma/migrations/
+# Note: prisma/migrations/ MUST be version-controlled for database consistency
 
 # Cache
 .cache/

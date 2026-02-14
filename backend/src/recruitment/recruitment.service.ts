@@ -569,7 +569,7 @@ export class RecruitmentService {
     return cellValue;
   }
 
-  async importStudentsFromExcel(driveId: string, fileBuffer: Buffer) {
+  async importStudentsFromExcel(driveId: string, fileBuffer: Buffer, evaluatorId?: string) {
     const drive = await this.prisma.placementDrive.findUnique({ where: { id: driveId } });
     if (!drive) {
       throw new NotFoundException('Placement drive not found');
@@ -595,13 +595,20 @@ export class RecruitmentService {
       return String(value).trim();
     };
 
+    const VALID_ROUND_STATUSES = ['PASS', 'FAIL', 'ON_HOLD'];
+
     // Parse data rows
-    const students: Array<{ name: string; email: string; phone: string; studentData: Record<string, any> }> = [];
+    const students: Array<{
+      name: string; email: string; phone: string; studentData: Record<string, any>;
+      round1Result?: string; round1Comments?: string; round2Result?: string; round2Comments?: string;
+    }> = [];
     const results: Array<{ row: number; name: string; status: 'success' | 'failed'; message?: string }> = [];
 
     // Known core fields (will not go into studentData)
     const coreFields = new Set(['name', 'student name', 'student_name', 'fullname', 'full name', 'full_name',
-      'email', 'email address', 'email_address', 'phone', 'mobile', 'phone number', 'phone_number', 'contact']);
+      'email', 'email address', 'email_address', 'phone', 'mobile', 'phone number', 'phone_number', 'contact',
+      'round 1 result', 'round1result', 'round_1_result', 'round 1 comments', 'round1comments', 'round_1_comments',
+      'round 2 result', 'round2result', 'round_2_result', 'round 2 comments', 'round2comments', 'round_2_comments']);
 
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
@@ -634,6 +641,38 @@ export class RecruitmentService {
         return;
       }
 
+      // Extract round evaluation data
+      const round1Result = getString(
+        record['round 1 result'] || record.round1result || record.round_1_result,
+      ).toUpperCase();
+      const round1Comments = getString(
+        record['round 1 comments'] || record.round1comments || record.round_1_comments,
+      );
+      const round2Result = getString(
+        record['round 2 result'] || record.round2result || record.round_2_result,
+      ).toUpperCase();
+      const round2Comments = getString(
+        record['round 2 comments'] || record.round2comments || record.round_2_comments,
+      );
+
+      // Validate round results if provided
+      if (round1Result && !VALID_ROUND_STATUSES.includes(round1Result)) {
+        results.push({ row: rowNumber, name, status: 'failed', message: `Invalid Round 1 Result: "${round1Result}". Must be PASS, FAIL, or ON_HOLD` });
+        return;
+      }
+      if (round2Result && !VALID_ROUND_STATUSES.includes(round2Result)) {
+        results.push({ row: rowNumber, name, status: 'failed', message: `Invalid Round 2 Result: "${round2Result}". Must be PASS, FAIL, or ON_HOLD` });
+        return;
+      }
+      if (round2Result && !round1Result) {
+        results.push({ row: rowNumber, name, status: 'failed', message: 'Round 2 Result requires Round 1 Result' });
+        return;
+      }
+      if (round2Result && round1Result !== 'PASS') {
+        results.push({ row: rowNumber, name, status: 'failed', message: 'Round 2 Result requires Round 1 to be PASS' });
+        return;
+      }
+
       // Collect any extra columns as studentData
       const studentData: Record<string, any> = {};
       for (const [key, value] of Object.entries(record)) {
@@ -644,7 +683,13 @@ export class RecruitmentService {
         }
       }
 
-      students.push({ name, email, phone, studentData });
+      students.push({
+        name, email, phone, studentData,
+        round1Result: round1Result || undefined,
+        round1Comments: round1Comments || undefined,
+        round2Result: round2Result || undefined,
+        round2Comments: round2Comments || undefined,
+      });
       results.push({ row: rowNumber, name, status: 'success' });
     });
 
@@ -705,6 +750,53 @@ export class RecruitmentService {
       });
       insertedCount = result.count;
 
+      // Create RoundEvaluation records for students with evaluation data
+      const studentsWithEvals = toInsert.filter(s => s.round1Result || s.round2Result);
+      if (studentsWithEvals.length > 0 && evaluatorId) {
+        // Fetch inserted students by email to get their IDs
+        const insertedStudents = await this.prisma.student.findMany({
+          where: {
+            driveId,
+            email: { in: studentsWithEvals.map(s => s.email) },
+          },
+          select: { id: true, email: true },
+        });
+        const emailToId = new Map(insertedStudents.map(s => [s.email.toLowerCase(), s.id]));
+
+        for (const student of studentsWithEvals) {
+          const studentId = emailToId.get(student.email.toLowerCase());
+          if (!studentId) continue;
+
+          // Create Round 1 evaluation
+          if (student.round1Result) {
+            await this.prisma.roundEvaluation.create({
+              data: {
+                studentId,
+                driveId,
+                roundNumber: 1,
+                evaluatorId,
+                status: student.round1Result as any,
+                comments: student.round1Comments || null,
+              },
+            });
+          }
+
+          // Create Round 2 evaluation
+          if (student.round2Result) {
+            await this.prisma.roundEvaluation.create({
+              data: {
+                studentId,
+                driveId,
+                roundNumber: 2,
+                evaluatorId,
+                status: student.round2Result as any,
+                comments: student.round2Comments || null,
+              },
+            });
+          }
+        }
+      }
+
       // Notify interviewers
       if (insertedCount > 0) {
         await this.notificationService.notifyStudentAdded(driveId, insertedCount);
@@ -735,6 +827,10 @@ export class RecruitmentService {
       { header: 'Branch', key: 'branch', width: 25 },
       { header: 'CGPA', key: 'cgpa', width: 10 },
       { header: 'Graduation Year', key: 'graduationYear', width: 18 },
+      { header: 'Round 1 Result', key: 'round1Result', width: 16 },
+      { header: 'Round 1 Comments', key: 'round1Comments', width: 30 },
+      { header: 'Round 2 Result', key: 'round2Result', width: 16 },
+      { header: 'Round 2 Comments', key: 'round2Comments', width: 30 },
     ];
 
     // Style header row
@@ -757,6 +853,10 @@ export class RecruitmentService {
       branch: 'Computer Science',
       cgpa: 8.5,
       graduationYear: 2026,
+      round1Result: 'PASS',
+      round1Comments: 'Good technical skills',
+      round2Result: 'PASS',
+      round2Comments: 'Strong communication',
     });
     worksheet.addRow({
       name: 'Priya Sharma',
@@ -766,6 +866,10 @@ export class RecruitmentService {
       branch: 'Information Technology',
       cgpa: 9.0,
       graduationYear: 2026,
+      round1Result: 'ON_HOLD',
+      round1Comments: 'Needs follow-up',
+      round2Result: '',
+      round2Comments: '',
     });
 
     // Instructions sheet
@@ -792,6 +896,10 @@ export class RecruitmentService {
       { column: 'Branch', description: 'Department/Branch of study (stored in student data)', required: 'No' },
       { column: 'CGPA', description: 'Cumulative GPA (stored in student data)', required: 'No' },
       { column: 'Graduation Year', description: 'Expected graduation year (stored in student data)', required: 'No' },
+      { column: 'Round 1 Result', description: 'Round 1 evaluation result: PASS, FAIL, or ON_HOLD', required: 'No' },
+      { column: 'Round 1 Comments', description: 'Comments/feedback for round 1 evaluation', required: 'No' },
+      { column: 'Round 2 Result', description: 'Round 2 evaluation result: PASS, FAIL, or ON_HOLD (requires Round 1 PASS)', required: 'No' },
+      { column: 'Round 2 Comments', description: 'Comments/feedback for round 2 evaluation', required: 'No' },
       { column: '', description: '', required: '' },
       { column: 'Note', description: 'You can add any additional columns. Extra columns will be stored as student data.', required: '' },
     ];

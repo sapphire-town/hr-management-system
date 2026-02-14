@@ -368,7 +368,7 @@ const resetFormData = React.useCallback(() => {
       setSubmitting(true);
       await employeeAPI.promote(selectedEmployee.id, {
         newUserRole: promoteData.newUserRole,
-        newRoleId: promoteData.newRoleId,
+        ...(promoteData.newRoleId && { newRoleId: promoteData.newRoleId }),
         newSalary: promoteData.newSalary ? parseFloat(promoteData.newSalary) : undefined,
       });
       setShowPromoteModal(false);
@@ -1422,7 +1422,16 @@ const resetFormData = React.useCallback(() => {
               <div>
                 <Label>New Access Level</Label>
                 {promoteData.newUserRole ? (
-                  <Select value={promoteData.newUserRole} onValueChange={(v) => setPromoteData({ ...promoteData, newUserRole: v })}>
+                  <Select value={promoteData.newUserRole} onValueChange={(v) => {
+                    // Auto-match designation role based on access level name
+                    const roleName = v.charAt(0) + v.slice(1).toLowerCase().replace('_', ' ');
+                    const matchedRole = roles.find(r => r.name.toLowerCase().includes(roleName.toLowerCase()));
+                    setPromoteData({
+                      ...promoteData,
+                      newUserRole: v,
+                      newRoleId: matchedRole ? matchedRole.id : promoteData.newRoleId,
+                    });
+                  }}>
                     <SelectTrigger><SelectValue placeholder="Select access level" /></SelectTrigger>
                     <SelectContent>
                       {USER_ROLES.map((r) => (
@@ -1462,7 +1471,7 @@ const resetFormData = React.useCallback(() => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPromoteModal(false)}>Cancel</Button>
-            <Button onClick={handlePromote} disabled={submitting || !promoteData.newUserRole || !promoteData.newRoleId}>
+            <Button onClick={handlePromote} disabled={submitting || !promoteData.newUserRole}>
               {submitting ? 'Promoting...' : 'Promote Employee'}
             </Button>
           </DialogFooter>

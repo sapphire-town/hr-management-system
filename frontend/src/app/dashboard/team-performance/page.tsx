@@ -123,11 +123,20 @@ const tdStyle: React.CSSProperties = {
   borderBottom: '1px solid #f3f4f6',
 };
 
-const PERIOD_OPTIONS = [
-  { value: 'monthly', label: 'This Month' },
-  { value: 'quarterly', label: 'This Quarter' },
-  { value: 'yearly', label: 'This Year' },
-];
+const getCurrentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const getMonthDateRange = (monthStr: string) => {
+  const [year, month] = monthStr.split('-').map(Number);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+  return {
+    startDate: startDate.toISOString().split('T')[0],
+    endDate: endDate.toISOString().split('T')[0],
+  };
+};
 
 function TrendIcon({ trend }: { trend: 'up' | 'down' | 'stable' }) {
   if (trend === 'up') return <TrendingUp style={{ width: '16px', height: '16px', color: '#059669' }} />;
@@ -170,7 +179,7 @@ export default function TeamPerformancePage() {
   const isManager = user?.role === 'MANAGER';
   const isDirectorOrHR = user?.role === 'DIRECTOR' || user?.role === 'HR_HEAD';
 
-  const [period, setPeriod] = useState('monthly');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [loading, setLoading] = useState(true);
   const [teamDashboard, setTeamDashboard] = useState<TeamDashboard | null>(null);
   const [allTeams, setAllTeams] = useState<TeamSummary[]>([]);
@@ -180,15 +189,17 @@ export default function TeamPerformancePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const { startDate, endDate } = getMonthDateRange(selectedMonth);
+      const params = { period: 'monthly', startDate, endDate };
       if (isManager) {
-        const res = await performanceAPI.getTeamDashboard({ period });
+        const res = await performanceAPI.getTeamDashboard(params);
         setTeamDashboard(res.data);
       } else if (isDirectorOrHR) {
-        const teamsRes = await performanceAPI.getAllTeams({ period });
+        const teamsRes = await performanceAPI.getAllTeams(params);
         setAllTeams(teamsRes.data || []);
         // Also try to get own team if applicable
         try {
-          const ownRes = await performanceAPI.getTeamDashboard({ period });
+          const ownRes = await performanceAPI.getTeamDashboard(params);
           setTeamDashboard(ownRes.data);
         } catch {
           // May not have a team
@@ -199,7 +210,7 @@ export default function TeamPerformancePage() {
     } finally {
       setLoading(false);
     }
-  }, [period, isManager, isDirectorOrHR]);
+  }, [selectedMonth, isManager, isDirectorOrHR]);
 
   useEffect(() => {
     fetchData();
@@ -216,7 +227,8 @@ export default function TeamPerformancePage() {
     setSelectedTeamId(managerId);
     setLoadingTeam(true);
     try {
-      const res = await performanceAPI.getManagerTeamDashboard(managerId, { period });
+      const { startDate, endDate } = getMonthDateRange(selectedMonth);
+      const res = await performanceAPI.getManagerTeamDashboard(managerId, { period: 'monthly', startDate, endDate });
       setSelectedTeamData(res.data);
     } catch {
       setSelectedTeamData(null);
@@ -231,7 +243,7 @@ export default function TeamPerformancePage() {
     if (data.length === 0) return;
 
     exportToExcel({
-      filename: `team_performance_${period}_${new Date().toISOString().split('T')[0]}`,
+      filename: `team_performance_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
       title: `Team Performance - ${activeDashboard?.managerName || 'All Teams'}`,
       columns: [
         { key: 'employeeName', header: 'Employee', width: 20 },
@@ -254,7 +266,7 @@ export default function TeamPerformancePage() {
     if (data.length === 0) return;
 
     exportToPDF({
-      filename: `team_performance_${period}_${new Date().toISOString().split('T')[0]}`,
+      filename: `team_performance_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
       title: `Team Performance Report - ${activeDashboard?.managerName || ''}`,
       columns: [
         { key: 'employeeName', header: 'Employee', width: 20 },
@@ -282,29 +294,22 @@ export default function TeamPerformancePage() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {/* Period Selector */}
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
+            {/* Month Selector */}
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              max={getCurrentMonth()}
               style={{
-                padding: '8px 32px 8px 12px',
+                padding: '8px 12px',
                 borderRadius: '10px',
                 border: '1px solid #e5e7eb',
                 fontSize: '14px',
                 backgroundColor: '#f9fafb',
                 cursor: 'pointer',
                 outline: 'none',
-                appearance: 'none' as const,
-                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                backgroundPosition: 'right 8px center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: '20px 20px',
               }}
-            >
-              {PERIOD_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            />
 
             {(selectedTeamData || teamDashboard) && (
               <>

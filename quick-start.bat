@@ -37,7 +37,7 @@ echo Prisma client generated successfully!
 echo.
 
 echo Step 4: Running Database Migrations...
-call npx prisma migrate dev --name init
+call npx prisma migrate deploy
 if %errorlevel% neq 0 (
     echo Database migration failed! Please check your DATABASE_URL in .env
     pause

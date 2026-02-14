@@ -568,6 +568,20 @@ export class EmployeeService {
     const previousRoleName = employee.role?.name || 'Unknown';
     const previousUserRole = employee.user.role;
 
+    // Resolve the roleId for designation
+    let resolvedRoleId = dto.newRoleId;
+    if (!resolvedRoleId) {
+      // Auto-match: find a Role whose name matches the access level (e.g., "Manager", "Director")
+      const accessRoleName = dto.newUserRole.charAt(0) + dto.newUserRole.slice(1).toLowerCase().replace('_', ' ');
+      const matchedRole = await this.prisma.role.findFirst({
+        where: {
+          name: { contains: accessRoleName, mode: 'insensitive' },
+          isActive: true,
+        },
+      });
+      resolvedRoleId = matchedRole?.id || employee.roleId;
+    }
+
     // Update both user role and employee role in transaction
     const result = await this.prisma.$transaction(async (tx) => {
       // Update user's role
@@ -580,7 +594,7 @@ export class EmployeeService {
       const updatedEmployee = await tx.employee.update({
         where: { id },
         data: {
-          roleId: dto.newRoleId,
+          roleId: resolvedRoleId,
           ...(dto.newSalary && { salary: dto.newSalary }),
         },
         include: {

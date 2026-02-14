@@ -210,14 +210,14 @@ export class AttendanceController {
   }
 
   @Post('holidays')
-  @Roles(UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Create a holiday' })
   async createHoliday(@Body() dto: CreateHolidayDto) {
     return this.attendanceService.createHoliday(dto);
   }
 
   @Patch('holidays/:id')
-  @Roles(UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Update a holiday' })
   async updateHoliday(
     @Param('id') id: string,
@@ -227,7 +227,7 @@ export class AttendanceController {
   }
 
   @Delete('holidays/:id')
-  @Roles(UserRole.HR_HEAD)
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Delete a holiday' })
   async deleteHoliday(@Param('id') id: string) {
     return this.attendanceService.deleteHoliday(id);

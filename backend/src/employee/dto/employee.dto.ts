@@ -184,9 +184,10 @@ export class PromoteEmployeeDto {
   @IsEnum(UserRole)
   newUserRole: UserRole;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ description: 'New job designation role ID. If not provided, system will try to auto-match a role by access level name.' })
+  @IsOptional()
   @IsUUID()
-  newRoleId: string;
+  newRoleId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

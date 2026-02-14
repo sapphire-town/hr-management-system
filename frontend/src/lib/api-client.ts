@@ -63,7 +63,7 @@ export const employeeAPI = {
   getMyTeamAttendance: () => apiClient.get('/employees/team/attendance'),
   create: (data: any) => apiClient.post('/employees', data),
   update: (id: string, data: any) => apiClient.patch(`/employees/${id}`, data),
-  promote: (id: string, data: { newUserRole: string; newRoleId: string; newSalary?: number }) =>
+  promote: (id: string, data: { newUserRole: string; newRoleId?: string; newSalary?: number }) =>
     apiClient.patch(`/employees/${id}/promote`, data),
   assignManager: (employeeId: string, managerId: string) =>
     apiClient.patch(`/employees/${employeeId}/assign-manager`, { managerId }),
@@ -166,21 +166,21 @@ export const performanceAPI = {
     apiClient.get(`/performance/employee/${employeeId}`, { params }),
   getEmployeeHistory: (employeeId: string, months?: number) =>
     apiClient.get(`/performance/employee/${employeeId}/history`, { params: { months } }),
-  getTeamPerformance: (params?: { period?: string }) =>
+  getTeamPerformance: (params?: { period?: string; startDate?: string; endDate?: string }) =>
     apiClient.get('/performance/team', { params }),
   getTeamDashboard: (params?: { period?: string; startDate?: string; endDate?: string }) =>
     apiClient.get('/performance/team/dashboard', { params }),
-  getAllTeams: (params?: { period?: string }) =>
+  getAllTeams: (params?: { period?: string; startDate?: string; endDate?: string }) =>
     apiClient.get('/performance/team/all', { params }),
-  getManagerTeamDashboard: (managerId: string, params?: { period?: string }) =>
+  getManagerTeamDashboard: (managerId: string, params?: { period?: string; startDate?: string; endDate?: string }) =>
     apiClient.get(`/performance/team/dashboard/${managerId}`, { params }),
 
   // Director/HR endpoints
-  getAllEmployeesPerformance: (params?: { period?: string }) =>
+  getAllEmployeesPerformance: (params?: { period?: string; startDate?: string; endDate?: string }) =>
     apiClient.get('/performance/all-employees', { params }),
-  getDepartmentPerformance: (params?: { period?: string }) =>
+  getDepartmentPerformance: (params?: { period?: string; startDate?: string; endDate?: string }) =>
     apiClient.get('/performance/departments', { params }),
-  getCompanyPerformance: (params?: { period?: string }) =>
+  getCompanyPerformance: (params?: { period?: string; startDate?: string; endDate?: string }) =>
     apiClient.get('/performance/company', { params }),
 
   // Chart data

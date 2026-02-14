@@ -130,10 +130,14 @@ export class LeaveService {
     let workingDays = 0;
     const current = new Date(startDate);
 
+    // Fetch configured working days from CompanySettings
+    const settings = await this.prisma.companySettings.findFirst();
+    const configuredWorkingDays: number[] = (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+
     while (current <= endDate) {
       const dayOfWeek = current.getDay();
-      // Skip weekends (0 = Sunday, 6 = Saturday)
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      // Skip days not in configured working days
+      if (configuredWorkingDays.includes(dayOfWeek)) {
         // Check if it's a holiday
         const isHoliday = await this.holidayService.isHoliday(current);
         if (!isHoliday) {
@@ -367,10 +371,14 @@ export class LeaveService {
       const end = new Date(leave.endDate);
       end.setHours(0, 0, 0, 0);
 
+      // Fetch configured working days from CompanySettings
+      const settings = await this.prisma.companySettings.findFirst();
+      const configuredWorkingDays: number[] = (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.getDay();
-        // Skip weekends
-        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+        // Skip days not in configured working days
+        if (!configuredWorkingDays.includes(dayOfWeek)) continue;
 
         // Skip holidays
         const isHoliday = await this.holidayService.isHoliday(new Date(d));

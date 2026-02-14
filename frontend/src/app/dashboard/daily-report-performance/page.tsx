@@ -23,6 +23,27 @@ import {
 
 type Period = 'weekly' | 'monthly' | 'quarterly' | 'annual';
 
+const getCurrentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const formatMonth = (monthStr: string) => {
+  const [year, month] = monthStr.split('-').map(Number);
+  const date = new Date(year, month - 1);
+  return date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+};
+
+const getMonthDateRange = (monthStr: string) => {
+  const [year, month] = monthStr.split('-').map(Number);
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+  return {
+    startDate: startDate.toISOString().split('T')[0],
+    endDate: endDate.toISOString().split('T')[0],
+  };
+};
+
 interface ParameterPerformance {
   paramKey: string;
   paramLabel: string;
@@ -121,12 +142,11 @@ function SummaryCard({
 
 export default function DailyReportPerformancePage() {
   const { user } = useAuthStore();
-  const [period, setPeriod] = useState<Period>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [loading, setLoading] = useState(true);
   const [myPerformance, setMyPerformance] = useState<EmployeePerformance | null>(null);
   const [teamPerformance, setTeamPerformance] = useState<TeamPerformance | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeePerformance | null>(null);
-  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
 
   const isManager = user?.role === 'MANAGER';
   const isHROrDirector = user?.role === 'HR_HEAD' || user?.role === 'DIRECTOR';
@@ -135,7 +155,8 @@ export default function DailyReportPerformancePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { period };
+      const { startDate, endDate } = getMonthDateRange(selectedMonth);
+      const params = { period: 'monthly' as Period, startDate, endDate };
 
       // Fetch own performance
       const myRes = await dailyReportAPI.getMyPerformance(params);
@@ -154,7 +175,7 @@ export default function DailyReportPerformancePage() {
     } finally {
       setLoading(false);
     }
-  }, [period, isManager, isHROrDirector]);
+  }, [selectedMonth, isManager, isHROrDirector]);
 
   useEffect(() => {
     fetchData();
@@ -163,7 +184,7 @@ export default function DailyReportPerformancePage() {
   const handleExportPDF = () => {
     const perf = selectedEmployee || myPerformance;
     if (!perf) return;
-    const periodLabel = PERIOD_OPTIONS.find((p) => p.value === period)?.label || period;
+    const periodLabel = formatMonth(selectedMonth);
     exportDailyReportPerformanceToPDF(perf, periodLabel);
   };
 
@@ -198,7 +219,7 @@ export default function DailyReportPerformancePage() {
 
   const activePerfView = selectedEmployee || myPerformance;
 
-  const periodLabel = PERIOD_OPTIONS.find((p) => p.value === period)?.label || period;
+  const periodLabel = formatMonth(selectedMonth);
 
   return (
     <DashboardLayout
@@ -206,76 +227,27 @@ export default function DailyReportPerformancePage() {
       description="Track target vs actual performance from daily reports"
       actions={
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {/* Period Selector */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowPeriodDropdown(!showPeriodDropdown)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: '12px',
-                border: '1px solid #e5e7eb',
-                backgroundColor: '#ffffff',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-                cursor: 'pointer',
-              }}
-            >
-              {periodLabel}
-              <ChevronDown style={{ width: '16px', height: '16px' }} />
-            </button>
-            {showPeriodDropdown && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '4px',
-                  backgroundColor: '#ffffff',
-                  borderRadius: '12px',
-                  border: '1px solid #e5e7eb',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-                  zIndex: 50,
-                  minWidth: '160px',
-                  overflow: 'hidden',
-                }}
-              >
-                {PERIOD_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      setPeriod(opt.value);
-                      setShowPeriodDropdown(false);
-                      setSelectedEmployee(null);
-                    }}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: '10px 16px',
-                      textAlign: 'left',
-                      fontSize: '14px',
-                      border: 'none',
-                      backgroundColor: period === opt.value ? '#f5f3ff' : 'transparent',
-                      color: period === opt.value ? '#7c3aed' : '#374151',
-                      fontWeight: period === opt.value ? 600 : 400,
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (period !== opt.value) e.currentTarget.style.backgroundColor = '#f9fafb';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (period !== opt.value) e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Month Selector */}
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => {
+              setSelectedMonth(e.target.value);
+              setSelectedEmployee(null);
+            }}
+            max={getCurrentMonth()}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '12px',
+              border: '1px solid #e5e7eb',
+              backgroundColor: '#ffffff',
+              fontSize: '14px',
+              fontWeight: 500,
+              color: '#374151',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          />
 
           {/* Export PDF */}
           <button
@@ -302,14 +274,6 @@ export default function DailyReportPerformancePage() {
         </div>
       }
     >
-      {/* Click away to close dropdown */}
-      {showPeriodDropdown && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-          onClick={() => setShowPeriodDropdown(false)}
-        />
-      )}
-
       {loading ? (
         <div
           style={{

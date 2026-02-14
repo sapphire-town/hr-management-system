@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   Res,
+  Request,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -154,8 +155,9 @@ export class RecruitmentController {
   async importStudentsFromExcel(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Request() req: any,
   ) {
-    return this.recruitmentService.importStudentsFromExcel(id, file.buffer);
+    return this.recruitmentService.importStudentsFromExcel(id, file.buffer, req.user.employeeId);
   }
 
   @Get('students/import-template')

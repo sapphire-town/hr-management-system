@@ -71,9 +71,9 @@ call npm install
 echo    Backend dependencies installed!
 
 echo.
-echo [5/6] Generating Prisma client and pushing schema...
+echo [5/6] Generating Prisma client and applying migrations...
 call npx prisma generate
-call npx prisma db push
+call npx prisma migrate deploy
 echo    Database schema ready!
 
 echo.
