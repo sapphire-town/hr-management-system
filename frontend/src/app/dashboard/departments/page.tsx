@@ -415,8 +415,8 @@ export default function DepartmentsPage() {
               <div style={styles.cardHeader}>
                 <div>
                   <p style={styles.cardTitle}>Fulfillment Rate</p>
-                  <p style={{ ...styles.cardValue, color: stats?.summary.overallFulfillment >= 100 ? '#16a34a' : '#ca8a04' }}>
-                    {stats?.summary.overallFulfillment?.toFixed(0) || 0}%
+                  <p style={{ ...styles.cardValue, color: (stats?.summary?.overallFulfillment ?? 0) >= 100 ? '#16a34a' : '#ca8a04' }}>
+                    {stats?.summary?.overallFulfillment?.toFixed(0) || 0}%
                   </p>
                 </div>
                 <div style={{ ...styles.iconContainer, backgroundColor: '#f3e8ff' }}>
@@ -805,7 +805,7 @@ export default function DepartmentsPage() {
               </h3>
               <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
                 Are you sure you want to delete "{selectedDept.name}"?
-                {getDeptStats(selectedDept.id)?.current > 0 && (
+                {(getDeptStats(selectedDept.id)?.current ?? 0) > 0 && (
                   <span style={{ color: '#dc2626', display: 'block', marginTop: '8px' }}>
                     This department has {getDeptStats(selectedDept.id)?.current} employees assigned.
                   </span>
