@@ -776,6 +776,12 @@ export class EmployeeService {
       throw new BadRequestException('Current password is incorrect');
     }
 
+    // Ensure new password is different from current password
+    const isSamePassword = await bcrypt.compare(dto.newPassword, user.password);
+    if (isSamePassword) {
+      throw new BadRequestException('New password must be different from current password');
+    }
+
     // Hash and update new password
     const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({
@@ -784,6 +790,26 @@ export class EmployeeService {
     });
 
     return { message: 'Password changed successfully' };
+  }
+
+  async toggleInterviewer(employeeId: string, isInterviewer: boolean) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: { select: { id: true, email: true, role: true } } },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    return this.prisma.employee.update({
+      where: { id: employeeId },
+      data: { isInterviewer },
+      include: {
+        user: { select: { id: true, email: true, role: true, isActive: true } },
+        role: { select: { id: true, name: true } },
+      },
+    });
   }
 
   private generatePassword(): string {

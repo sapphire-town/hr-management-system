@@ -90,7 +90,7 @@ export class EmployeeController {
   @ApiOperation({ summary: "Get manager's team members" })
   async getTeam(@CurrentUser() user: JwtPayload) {
     if (!user.employeeId) {
-      return [];
+      throw new BadRequestException('Your account is not linked to an employee profile. Please contact HR.');
     }
     return this.employeeService.getTeam(user.employeeId);
   }
@@ -100,7 +100,7 @@ export class EmployeeController {
   @ApiOperation({ summary: "Get team's attendance for today" })
   async getTeamAttendance(@CurrentUser() user: JwtPayload) {
     if (!user.employeeId) {
-      return [];
+      throw new BadRequestException('Your account is not linked to an employee profile. Please contact HR.');
     }
     return this.employeeService.getTeamAttendanceToday(user.employeeId);
   }
@@ -221,6 +221,16 @@ export class EmployeeController {
   @ApiOperation({ summary: 'Reactivate a deactivated employee' })
   async reactivate(@Param('id') id: string) {
     return this.employeeService.reactivate(id);
+  }
+
+  @Patch(':id/toggle-interviewer')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Toggle interviewer capability for an employee' })
+  async toggleInterviewer(
+    @Param('id') id: string,
+    @Body() body: { isInterviewer: boolean },
+  ) {
+    return this.employeeService.toggleInterviewer(id, body.isInterviewer);
   }
 
   @Post('admin/initialize-leave-balances')

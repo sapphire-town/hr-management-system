@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -74,7 +75,7 @@ export class LeaveController {
   @ApiOperation({ summary: 'Get pending leaves for manager approval' })
   async getPendingForManager(@CurrentUser() user: JwtPayload) {
     if (!user.employeeId) {
-      return [];
+      throw new BadRequestException('Your account is not linked to an employee profile. Please contact HR.');
     }
     return this.leaveService.getPendingForManager(user.employeeId);
   }

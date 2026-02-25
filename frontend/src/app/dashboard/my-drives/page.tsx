@@ -196,9 +196,9 @@ export default function MyDrivesPage() {
       setEvaluationData({ round: 1, status: '', comments: '' });
     } else if (round1.status === 'PASS' && !round2) {
       setEvaluationData({ round: 2, status: '', comments: '' });
-    } else if (round1.status === 'PASS' && round2?.status === 'PASS' && !round3 && isHROrDirector) {
+    } else if (round2?.status === 'PASS' && !round3 && isHROrDirector) {
       setEvaluationData({ round: 3, status: '', comments: '' });
-    } else if (round1.status === 'PASS' && round2?.status === 'PASS' && round3 && isHROrDirector) {
+    } else if (round3 && isHROrDirector) {
       setEvaluationData({ round: 3, status: round3.status, comments: round3.comments || '' });
     } else if (round1.status === 'PASS' && round2) {
       setEvaluationData({ round: 2, status: round2.status, comments: round2.comments || '' });
@@ -1050,7 +1050,6 @@ export default function MyDrivesPage() {
                         {isHROrDirector && (
                           <button
                             onClick={() => setEvaluationData({ ...evaluationData, round: 3 })}
-                            disabled={getStudentRound2Status(selectedStudent)?.status !== 'PASS'}
                             style={{
                               flex: 1,
                               padding: '10px',
@@ -1060,8 +1059,7 @@ export default function MyDrivesPage() {
                               color: evaluationData.round === 3 ? '#7c3aed' : '#6b7280',
                               fontSize: '13px',
                               fontWeight: 500,
-                              cursor: getStudentRound2Status(selectedStudent)?.status !== 'PASS' ? 'not-allowed' : 'pointer',
-                              opacity: getStudentRound2Status(selectedStudent)?.status !== 'PASS' ? 0.5 : 1,
+                              cursor: 'pointer',
                             }}
                           >
                             Round 3

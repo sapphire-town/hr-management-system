@@ -181,11 +181,16 @@ export default function DailyReportPerformancePage() {
     fetchData();
   }, [fetchData]);
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const perf = selectedEmployee || myPerformance;
     if (!perf) return;
-    const periodLabel = formatMonth(selectedMonth);
-    exportDailyReportPerformanceToPDF(perf, periodLabel);
+    try {
+      const periodLabel = formatMonth(selectedMonth);
+      await exportDailyReportPerformanceToPDF(perf, periodLabel);
+    } catch (error) {
+      console.error('Export PDF error:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
   };
 
   // Filter out text-type parameters (not measurable) - only show numeric params with targets
@@ -381,7 +386,11 @@ export default function DailyReportPerformancePage() {
               icon={Target}
               label="Overall Achievement"
               value={`${activePerfView.overallAchievementPct.toFixed(1)}%`}
-              subtitle={activePerfView.overallAchievementPct >= 100 ? 'On track' : 'Below target'}
+              subtitle={
+                activePerfView.overallAchievementPct >= 100
+                  ? `Target met${activePerfView.overallAchievementPct > 100 ? ` · ${(activePerfView.overallAchievementPct - 100).toFixed(1)}% above` : ''}`
+                  : `${(100 - activePerfView.overallAchievementPct).toFixed(1)}% below target`
+              }
               color={activePerfView.overallAchievementPct >= 100 ? '#22c55e' : activePerfView.overallAchievementPct >= 75 ? '#eab308' : '#ef4444'}
             />
             <SummaryCard

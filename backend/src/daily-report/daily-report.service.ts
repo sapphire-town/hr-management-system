@@ -120,24 +120,21 @@ export class DailyReportService {
       },
     });
 
-    // Notify manager about the submission
+    // Notify manager about the submission (fire-and-forget)
     if (report.employee.managerId) {
-      try {
-        const manager = await this.prisma.employee.findUnique({
-          where: { id: report.employee.managerId },
-          include: { user: { select: { id: true } } },
-        });
+      this.prisma.employee.findUnique({
+        where: { id: report.employee.managerId },
+        include: { user: { select: { id: true } } },
+      }).then(manager => {
         if (manager?.user) {
-          await this.notificationService.sendNotification({
+          this.notificationService.sendNotification({
             recipientId: manager.user.id,
             subject: `Daily Report Submitted`,
             message: `${report.employee.firstName} ${report.employee.lastName} has submitted their daily report for ${format(reportDate, 'MMMM d, yyyy')}.`,
             type: 'in-app',
-          });
+          }).catch(err => console.error('DailyReport create notification failed:', err));
         }
-      } catch (err) {
-        console.error('[DailyReport] Failed to notify manager:', err);
-      }
+      }).catch(err => console.error('DailyReport create manager lookup failed:', err));
     }
 
     return report;
@@ -639,7 +636,7 @@ export class DailyReportService {
         target: param.target || 0,
         totalTarget,
         totalActual: Math.round(totalActual * 10) / 10,
-        achievementPct: totalTarget > 0 ? Math.round((totalActual / totalTarget) * 100) : 0,
+        achievementPct: totalTarget > 0 ? Math.round((totalActual / totalTarget) * 1000) / 10 : 0,
         averageDaily: daysReported > 0 ? Math.round((totalActual / daysReported) * 10) / 10 : 0,
         daysReported,
       };
@@ -667,7 +664,7 @@ export class DailyReportService {
         bucketParams[param.key] = {
           actual: Math.round(actual * 10) / 10,
           target,
-          achievementPct: target > 0 ? Math.round((actual / target) * 100) : 0,
+          achievementPct: target > 0 ? Math.round((actual / target) * 1000) / 10 : 0,
         };
       }
 
@@ -683,7 +680,7 @@ export class DailyReportService {
 
     // Overall achievement
     const overallAchievementPct = paramPerformances.length > 0
-      ? Math.round(paramPerformances.reduce((s, p) => s + p.achievementPct, 0) / paramPerformances.length)
+      ? Math.round(paramPerformances.reduce((s, p) => s + p.achievementPct, 0) / paramPerformances.length * 10) / 10
       : 0;
 
     // Best/worst
@@ -697,7 +694,7 @@ export class DailyReportService {
       roleName: employee.role.name,
       parameters: paramPerformances,
       overallAchievementPct,
-      submissionRate: workingDays > 0 ? Math.round((reports.length / workingDays) * 100) : 0,
+      submissionRate: workingDays > 0 ? Math.round((reports.length / workingDays) * 1000) / 10 : 0,
       totalReports: reports.length,
       totalWorkingDays: workingDays,
       timeSeries,
@@ -756,10 +753,10 @@ export class DailyReportService {
 
   private aggregateTeamPerformance(employees: EmployeeReportPerformance[]): TeamReportPerformance {
     const teamAverageAchievement = employees.length > 0
-      ? Math.round(employees.reduce((s, e) => s + e.overallAchievementPct, 0) / employees.length)
+      ? Math.round(employees.reduce((s, e) => s + e.overallAchievementPct, 0) / employees.length * 10) / 10
       : 0;
     const teamAverageSubmissionRate = employees.length > 0
-      ? Math.round(employees.reduce((s, e) => s + e.submissionRate, 0) / employees.length)
+      ? Math.round(employees.reduce((s, e) => s + e.submissionRate, 0) / employees.length * 10) / 10
       : 0;
 
     // Aggregate parameter averages across all employees who share the same params
@@ -795,7 +792,7 @@ export class DailyReportService {
       target: val.target,
       totalTarget: val.totalTarget,
       totalActual: Math.round(val.totalActual * 10) / 10,
-      achievementPct: Math.round(val.total / val.count),
+      achievementPct: Math.round(val.total / val.count * 10) / 10,
       averageDaily: val.daysReported > 0 ? Math.round((val.totalActual / val.daysReported) * 10) / 10 : 0,
       daysReported: val.daysReported,
     }));
@@ -850,16 +847,12 @@ export class DailyReportService {
         });
 
         if (!report && employee.user) {
-          try {
-            await this.notificationService.sendNotification({
-              recipientId: employee.user.id,
-              subject: 'Daily Report Overdue',
-              message: `Your daily report for ${format(today, 'MMMM d, yyyy')} has not been submitted. Please submit it at your earliest convenience.`,
-              type: 'in-app',
-            });
-          } catch (err) {
-            console.error(`[DailyReport Cron] Failed to notify ${employee.id}:`, err);
-          }
+          this.notificationService.sendNotification({
+            recipientId: employee.user.id,
+            subject: 'Daily Report Overdue',
+            message: `Your daily report for ${format(today, 'MMMM d, yyyy')} has not been submitted. Please submit it at your earliest convenience.`,
+            type: 'in-app',
+          }).catch(err => console.error(`DailyReport cron overdue notification failed for ${employee.id}:`, err));
         }
       }
 

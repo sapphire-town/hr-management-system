@@ -201,7 +201,9 @@ function HRManageView() {
       const a = document.createElement('a');
       a.href = url;
       a.download = `attendance_${startDate}_to_${endDate}.csv`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to export');

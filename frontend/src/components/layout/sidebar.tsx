@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth-store';
 import { useUIStore } from '@/store/ui-store';
-import { NAVIGATION_CONFIG, type NavSection } from '@/lib/constants';
+import { NAVIGATION_CONFIG, INTERVIEWER_ADDON_SECTION, type NavSection } from '@/lib/constants';
 
 function SidebarItem({
   item,
@@ -80,7 +80,12 @@ export function Sidebar() {
   const { user } = useAuthStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
 
-  const navigation = user?.role ? NAVIGATION_CONFIG[user.role] || [] : [];
+  let navigation = user?.role ? NAVIGATION_CONFIG[user.role] || [] : [];
+
+  // Interviewer role is currently blocked — skip add-on nav injection
+  // if (user?.isInterviewer && user.role !== 'INTERVIEWER') {
+  //   navigation = [navigation[0], INTERVIEWER_ADDON_SECTION, ...navigation.slice(1)];
+  // }
 
   return (
     <aside
@@ -112,7 +117,7 @@ export function Sidebar() {
         }}
       >
         {!sidebarCollapsed && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <a href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', cursor: 'pointer' }}>
             <div
               style={{
                 height: '32px',
@@ -137,7 +142,7 @@ export function Sidebar() {
             >
               HR System
             </span>
-          </div>
+          </a>
         )}
         <button
           onClick={toggleSidebar}

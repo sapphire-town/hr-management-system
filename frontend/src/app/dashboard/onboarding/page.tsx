@@ -29,6 +29,7 @@ import {
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
 import { employeeAPI, roleAPI, notificationAPI } from '@/lib/api-client';
+import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import {
@@ -113,6 +114,7 @@ const USER_ROLES = ['EMPLOYEE', 'MANAGER', 'HR_HEAD', 'DIRECTOR', 'INTERVIEWER',
 
 export default function OnboardingPage() {
   const { user } = useAuthStore();
+  const { toast } = useToast();
   const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [newEmployees, setNewEmployees] = React.useState<NewEmployee[]>([]);
@@ -289,13 +291,27 @@ export default function OnboardingPage() {
   };
 
   const handleAddEmployee = async () => {
+    // Validate email
+    const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+    if (!formData.email || !emailRegex.test(formData.email)) {
+      toast({ title: 'Invalid email', description: 'Please enter a valid email address.', variant: 'destructive' });
+      return;
+    }
     if (!formData.roleId) {
-      alert('Please select a role');
+      toast({ title: 'Missing role', description: 'Please select a department/role.', variant: 'destructive' });
       return;
     }
     if (!formData.salary || parseFloat(formData.salary) <= 0) {
-      alert('Please enter a valid salary');
+      toast({ title: 'Invalid salary', description: 'Please enter a valid salary amount.', variant: 'destructive' });
       return;
+    }
+    // Validate phone if provided
+    if (formData.phone) {
+      const digits = formData.phone.replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 13) {
+        toast({ title: 'Invalid phone', description: 'Phone number must be 10-13 digits.', variant: 'destructive' });
+        return;
+      }
     }
 
     try {
@@ -335,9 +351,9 @@ export default function OnboardingPage() {
       console.error('Create employee error:', error);
       const message = error.response?.data?.message;
       if (Array.isArray(message)) {
-        alert('Validation errors:\n' + message.join('\n'));
+        toast({ title: 'Validation errors', description: message.join(', '), variant: 'destructive' });
       } else {
-        alert(message || 'Failed to create employee');
+        toast({ title: 'Create failed', description: message || 'Failed to create employee.', variant: 'destructive' });
       }
     } finally {
       setSubmitting(false);
@@ -364,12 +380,12 @@ export default function OnboardingPage() {
         try {
           const errorText = await error.response.data.text();
           const errorJson = JSON.parse(errorText);
-          alert(errorJson.message || 'Failed to download template');
+          toast({ title: 'Download failed', description: errorJson.message || 'Failed to download template.', variant: 'destructive' });
         } catch {
-          alert('Failed to download template. Please ensure the backend server is running.');
+          toast({ title: 'Download failed', description: 'Failed to download template. Please ensure the backend server is running.', variant: 'destructive' });
         }
       } else {
-        alert(error.response?.data?.message || error.message || 'Failed to download template.');
+        toast({ title: 'Download failed', description: error.response?.data?.message || error.message || 'Failed to download template.', variant: 'destructive' });
       }
     }
   };
@@ -385,7 +401,7 @@ export default function OnboardingPage() {
       setBulkImportResults(response.data);
       fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to import employees');
+      toast({ title: 'Import failed', description: error.response?.data?.message || 'Failed to import employees.', variant: 'destructive' });
     } finally {
       setBulkImporting(false);
     }
@@ -399,7 +415,7 @@ export default function OnboardingPage() {
         'application/vnd.ms-excel',
       ];
       if (!validTypes.includes(file.type) && !file.name.endsWith('.xlsx')) {
-        alert('Please upload an Excel file (.xlsx)');
+        toast({ title: 'Invalid file', description: 'Please upload an Excel file (.xlsx).', variant: 'destructive' });
         return;
       }
       setBulkImportFile(file);
@@ -1188,8 +1204,14 @@ export default function OnboardingPage() {
             <div>
               <Label>Phone</Label>
               <Input
+                type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9+\-\s]/g, '');
+                  setFormData({ ...formData, phone: val });
+                }}
+                placeholder="e.g., 9876543210"
+                maxLength={13}
               />
             </div>
             <div>

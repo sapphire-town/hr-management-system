@@ -65,8 +65,8 @@ export class ResignationService {
       },
     });
 
-    // Notify manager and HR with enhanced notification
-    await this.notificationService.notifyResignationSubmitted(
+    // Notify manager and HR with enhanced notification (fire-and-forget)
+    this.notificationService.notifyResignationSubmitted(
       {
         id: employee.id,
         firstName: employee.firstName,
@@ -80,7 +80,7 @@ export class ResignationService {
         lastWorkingDay,
         noticePeriodDays: dto.noticePeriodDays,
       },
-    );
+    ).catch(err => console.error('Resignation submitResignation notification failed:', err));
 
     return resignation;
   }
@@ -211,9 +211,9 @@ export class ResignationService {
       data: updateData,
     });
 
-    // Notify employee with enhanced notification
+    // Notify employee with enhanced notification (fire-and-forget)
     if (employee) {
-      await this.notificationService.notifyResignationStatusChange(
+      this.notificationService.notifyResignationStatusChange(
         {
           userId: employee.userId,
           email: employee.user.email,
@@ -223,7 +223,7 @@ export class ResignationService {
         {
           lastWorkingDay: updated.lastWorkingDay,
         },
-      );
+      ).catch(err => console.error('Resignation managerApprove notification failed:', err));
     }
 
     return updated;
@@ -253,9 +253,9 @@ export class ResignationService {
       },
     });
 
-    // Notify employee with enhanced notification
+    // Notify employee with enhanced notification (fire-and-forget)
     if (employee) {
-      await this.notificationService.notifyResignationStatusChange(
+      this.notificationService.notifyResignationStatusChange(
         {
           userId: employee.userId,
           email: employee.user.email,
@@ -265,7 +265,7 @@ export class ResignationService {
         {
           rejectionReason: dto.rejectionReason,
         },
-      );
+      ).catch(err => console.error('Resignation managerReject notification failed:', err));
     }
 
     return updated;
@@ -292,25 +292,25 @@ export class ResignationService {
       data: updateData,
     });
 
-    const employee = await this.prisma.employee.findUnique({
+    // Employee lookup + notification (fire-and-forget)
+    this.prisma.employee.findUnique({
       where: { id: resignation.employeeId },
       include: { user: true },
-    });
-
-    // Notify employee with enhanced notification
-    if (employee) {
-      await this.notificationService.notifyResignationStatusChange(
-        {
-          userId: employee.userId,
-          email: employee.user.email,
-          firstName: employee.firstName,
-        },
-        'APPROVED',
-        {
-          lastWorkingDay: updated.lastWorkingDay,
-        },
-      );
-    }
+    }).then(employee => {
+      if (employee) {
+        this.notificationService.notifyResignationStatusChange(
+          {
+            userId: employee.userId,
+            email: employee.user.email,
+            firstName: employee.firstName,
+          },
+          'APPROVED',
+          {
+            lastWorkingDay: updated.lastWorkingDay,
+          },
+        ).catch(err => console.error('Resignation hrApprove notification failed:', err));
+      }
+    }).catch(err => console.error('Resignation hrApprove employee lookup failed:', err));
 
     return updated;
   }
@@ -330,25 +330,25 @@ export class ResignationService {
       },
     });
 
-    const employee = await this.prisma.employee.findUnique({
+    // Employee lookup + notification (fire-and-forget)
+    this.prisma.employee.findUnique({
       where: { id: resignation.employeeId },
       include: { user: true },
-    });
-
-    // Notify employee with enhanced notification
-    if (employee) {
-      await this.notificationService.notifyResignationStatusChange(
-        {
-          userId: employee.userId,
-          email: employee.user.email,
-          firstName: employee.firstName,
-        },
-        'REJECTED',
-        {
-          rejectionReason: dto.rejectionReason,
-        },
-      );
-    }
+    }).then(employee => {
+      if (employee) {
+        this.notificationService.notifyResignationStatusChange(
+          {
+            userId: employee.userId,
+            email: employee.user.email,
+            firstName: employee.firstName,
+          },
+          'REJECTED',
+          {
+            rejectionReason: dto.rejectionReason,
+          },
+        ).catch(err => console.error('Resignation hrReject notification failed:', err));
+      }
+    }).catch(err => console.error('Resignation hrReject employee lookup failed:', err));
 
     return updated;
   }
@@ -397,12 +397,12 @@ export class ResignationService {
       });
 
       if (employee) {
-        await this.notificationService.sendNotification({
+        this.notificationService.sendNotification({
           recipientId: employee.userId,
           subject: 'Exit Process Complete',
           message: 'Your exit process has been completed. Thank you for your contributions.',
           type: 'both',
-        });
+        }).catch(err => console.error('Resignation updateExitStatus notification failed:', err));
 
         // Deactivate user account
         await this.prisma.user.update({
@@ -435,14 +435,14 @@ export class ResignationService {
       include: { manager: { include: { user: true } } },
     });
 
-    // Notify manager
+    // Notify manager (fire-and-forget)
     if (employee?.manager) {
-      await this.notificationService.sendNotification({
+      this.notificationService.sendNotification({
         recipientId: employee.manager.userId,
         subject: 'Resignation Withdrawn',
         message: `${employee.firstName} ${employee.lastName} has withdrawn their resignation.`,
         type: 'both',
-      });
+      }).catch(err => console.error('Resignation withdrawResignation notification failed:', err));
     }
 
     return { message: 'Resignation withdrawn successfully' };

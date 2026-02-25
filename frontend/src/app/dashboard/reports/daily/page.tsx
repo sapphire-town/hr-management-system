@@ -279,14 +279,26 @@ export default function DailyReportPage() {
         });
       }
       await fetchData();
-      // Reset form after submission
-      const initialData: Record<string, ParamData> = {};
-      reportingParams.forEach((param) => {
-        initialData[param.key] = { value: 0, notes: '', links: [] };
-      });
-      setReportData(initialData);
+      // Reset form — go back to today's view
+      setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
       setGeneralNotes('');
       setAttachments([]);
+      // Re-populate from today's report if it exists after refresh
+      if (todayReport) {
+        const normalized: Record<string, ParamData> = {};
+        Object.keys(todayReport.reportData || {}).forEach((key) => {
+          normalized[key] = normalizeParamData(todayReport.reportData[key]);
+        });
+        setReportData(normalized);
+        setGeneralNotes(todayReport.generalNotes || '');
+        setAttachments(todayReport.attachments || []);
+      } else {
+        const initialData: Record<string, ParamData> = {};
+        reportingParams.forEach((param) => {
+          initialData[param.key] = { value: 0, notes: '', links: [] };
+        });
+        setReportData(initialData);
+      }
     } catch (error: any) {
       console.error('Error submitting report:', error);
       alert(error.response?.data?.message || 'Failed to submit report');
@@ -311,6 +323,7 @@ export default function DailyReportPage() {
     if (!confirm('Are you sure you want to delete this report?')) return;
     try {
       await dailyReportAPI.delete(id);
+      setViewingReport(null);
       await fetchData();
     } catch (error: any) {
       console.error('Error deleting report:', error);

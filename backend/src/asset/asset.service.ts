@@ -12,6 +12,7 @@ import {
   RejectAssetRequestDto,
   AllocateAssetDto,
   AssetFilterDto,
+  ReturnAssetDto,
 } from './dto/asset.dto';
 import { AssetStatus, UserRole } from '@prisma/client';
 
@@ -53,14 +54,14 @@ export class AssetService {
       },
     });
 
-    // Notify manager
+    // Notify manager (fire-and-forget to avoid blocking on email)
     if (employee?.manager) {
-      await this.notificationService.sendNotification({
+      this.notificationService.sendNotification({
         recipientId: employee.manager.userId,
         subject: 'New Asset Request',
         message: `${employee.firstName} ${employee.lastName} has submitted a request for ${dto.assetType}.`,
         type: 'both',
-      });
+      }).catch(err => console.error('Asset request notification failed:', err));
     }
 
     return request;
@@ -189,19 +190,19 @@ export class AssetService {
       },
     });
 
-    // Notify HR
-    const hrUsers = await this.prisma.user.findMany({
+    // Notify HR (fire-and-forget)
+    this.prisma.user.findMany({
       where: { role: { in: ['HR_HEAD', 'DIRECTOR'] } },
-    });
-
-    for (const hr of hrUsers) {
-      await this.notificationService.sendNotification({
-        recipientId: hr.id,
-        subject: 'Asset Request Pending HR Approval',
-        message: `Asset request for ${request.assetType} by ${request.employee.firstName} ${request.employee.lastName} is pending HR approval.`,
-        type: 'both',
-      });
-    }
+    }).then(hrUsers => {
+      for (const hr of hrUsers) {
+        this.notificationService.sendNotification({
+          recipientId: hr.id,
+          subject: 'Asset Request Pending HR Approval',
+          message: `Asset request for ${request.assetType} by ${request.employee.firstName} ${request.employee.lastName} is pending HR approval.`,
+          type: 'both',
+        }).catch(err => console.error('Asset HR notification failed:', err));
+      }
+    }).catch(err => console.error('Failed to fetch HR users for notification:', err));
 
     return updated;
   }
@@ -230,13 +231,13 @@ export class AssetService {
       },
     });
 
-    // Notify employee
-    await this.notificationService.sendNotification({
+    // Notify employee (fire-and-forget)
+    this.notificationService.sendNotification({
       recipientId: employee.userId,
       subject: 'Asset Request Rejected',
       message: `Your request for ${request.assetType} has been rejected. Reason: ${dto.rejectionReason}`,
       type: 'both',
-    });
+    }).catch(err => console.error('Asset rejection notification failed:', err));
 
     return updated;
   }
@@ -265,14 +266,14 @@ export class AssetService {
       include: { user: true },
     });
 
-    // Notify employee
+    // Notify employee (fire-and-forget)
     if (employee) {
-      await this.notificationService.sendNotification({
+      this.notificationService.sendNotification({
         recipientId: employee.userId,
         subject: 'Asset Request Approved',
         message: `Your request for ${request.assetType} has been approved. Asset will be allocated soon.`,
         type: 'both',
-      });
+      }).catch(err => console.error('Asset approval notification failed:', err));
     }
 
     return updated;
@@ -299,14 +300,14 @@ export class AssetService {
       include: { user: true },
     });
 
-    // Notify employee
+    // Notify employee (fire-and-forget)
     if (employee) {
-      await this.notificationService.sendNotification({
+      this.notificationService.sendNotification({
         recipientId: employee.userId,
         subject: 'Asset Request Rejected',
         message: `Your request for ${request.assetType} has been rejected by HR. Reason: ${dto.rejectionReason}`,
         type: 'both',
-      });
+      }).catch(err => console.error('Asset HR rejection notification failed:', err));
     }
 
     return updated;
@@ -332,14 +333,14 @@ export class AssetService {
       include: { user: true },
     });
 
-    // Notify employee
+    // Notify employee (fire-and-forget)
     if (employee) {
-      await this.notificationService.sendNotification({
+      this.notificationService.sendNotification({
         recipientId: employee.userId,
         subject: 'Asset Allocated',
         message: `${request.assetType} (Serial: ${dto.assetSerialNo}) has been allocated to you. Please acknowledge receipt.`,
         type: 'both',
-      });
+      }).catch(err => console.error('Asset allocation notification failed:', err));
     }
 
     return updated;
@@ -365,8 +366,169 @@ export class AssetService {
     });
   }
 
+  async requestReturn(id: string, employeeId: string, dto: ReturnAssetDto) {
+    const request = await this.getRequestById(id);
+
+    if (request.employeeId !== employeeId) {
+      throw new ForbiddenException('You are not authorized to return this asset');
+    }
+
+    if (request.status !== 'ACKNOWLEDGED') {
+      throw new BadRequestException('Only acknowledged assets can be returned');
+    }
+
+    const updated = await this.prisma.assetRequest.update({
+      where: { id },
+      data: {
+        status: 'RETURN_REQUESTED',
+        returnReason: dto.returnReason,
+        returnCondition: dto.returnCondition,
+      },
+    });
+
+    // Notify manager about return request for quality check (fire-and-forget)
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: request.employeeId },
+      include: { manager: { include: { user: true } } },
+    });
+
+    if (employee?.manager) {
+      this.notificationService.sendNotification({
+        recipientId: employee.manager.userId,
+        subject: 'Asset Return - Quality Check Required',
+        message: `${employee.firstName} ${employee.lastName} has requested to return ${request.assetType} (Serial: ${request.assetSerialNo}). Condition: ${dto.returnCondition}. Please verify the asset quality.`,
+        type: 'both',
+      }).catch(err => console.error('Asset return notification failed:', err));
+    }
+
+    return updated;
+  }
+
+  async managerApproveReturn(id: string, managerId: string) {
+    const request = await this.getRequestById(id);
+
+    if (request.status !== 'RETURN_REQUESTED') {
+      throw new BadRequestException('Asset return is not pending manager approval');
+    }
+
+    // Verify this is the employee's manager
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: request.employeeId },
+      include: { user: true },
+    });
+
+    if (employee?.managerId !== managerId) {
+      throw new ForbiddenException('You are not authorized to approve this return');
+    }
+
+    const updated = await this.prisma.assetRequest.update({
+      where: { id },
+      data: {
+        status: 'MANAGER_RETURN_APPROVED',
+        managerReturnApproved: true,
+      },
+    });
+
+    // Notify HR about manager-approved return (fire-and-forget)
+    this.prisma.user.findMany({
+      where: { role: { in: ['HR_HEAD', 'DIRECTOR'] } },
+    }).then(hrUsers => {
+      for (const hr of hrUsers) {
+        this.notificationService.sendNotification({
+          recipientId: hr.id,
+          subject: 'Asset Return - Manager Quality Verified',
+          message: `Manager has verified the quality of ${request.assetType} (Serial: ${request.assetSerialNo}) returned by ${employee!.firstName} ${employee!.lastName}. Condition: ${request.returnCondition}. Pending your final confirmation.`,
+          type: 'both',
+        }).catch(err => console.error('Asset return HR notification failed:', err));
+      }
+    }).catch(err => console.error('Failed to fetch HR users for return notification:', err));
+
+    // Notify employee (fire-and-forget)
+    if (employee) {
+      this.notificationService.sendNotification({
+        recipientId: employee.userId,
+        subject: 'Asset Return - Manager Approved',
+        message: `Your manager has verified the quality of ${request.assetType} (Serial: ${request.assetSerialNo}). Pending final HR confirmation.`,
+        type: 'both',
+      }).catch(err => console.error('Asset return manager approval notification failed:', err));
+    }
+
+    return updated;
+  }
+
+  async approveReturn(id: string) {
+    const request = await this.getRequestById(id);
+
+    if (request.status !== 'MANAGER_RETURN_APPROVED') {
+      throw new BadRequestException('Asset return must be approved by manager first');
+    }
+
+    const updated = await this.prisma.assetRequest.update({
+      where: { id },
+      data: {
+        status: 'RETURNED',
+        returnedAt: new Date(),
+      },
+    });
+
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: request.employeeId },
+      include: { user: true },
+    });
+
+    // Notify employee (fire-and-forget)
+    if (employee) {
+      this.notificationService.sendNotification({
+        recipientId: employee.userId,
+        subject: 'Asset Return Confirmed',
+        message: `Your return of ${request.assetType} (Serial: ${request.assetSerialNo}) has been confirmed by HR. The asset has been received.`,
+        type: 'both',
+      }).catch(err => console.error('Asset return approval notification failed:', err));
+    }
+
+    return updated;
+  }
+
+  async getReturnRequests() {
+    return this.prisma.assetRequest.findMany({
+      where: { status: 'MANAGER_RETURN_APPROVED' },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            user: { select: { email: true } },
+            role: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async getManagerPendingReturns(managerId: string) {
+    return this.prisma.assetRequest.findMany({
+      where: {
+        status: 'RETURN_REQUESTED',
+        employee: { managerId },
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            user: { select: { email: true } },
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   async getAssetStats() {
-    const [total, pending, approved, allocated, acknowledged] = await Promise.all([
+    const [total, pending, approved, allocated, acknowledged, returnRequested, managerReturnApproved, returned] = await Promise.all([
       this.prisma.assetRequest.count(),
       this.prisma.assetRequest.count({
         where: { status: { in: ['SUBMITTED', 'PENDING_HR'] } },
@@ -374,9 +536,12 @@ export class AssetService {
       this.prisma.assetRequest.count({ where: { status: 'APPROVED' } }),
       this.prisma.assetRequest.count({ where: { status: 'ALLOCATED' } }),
       this.prisma.assetRequest.count({ where: { status: 'ACKNOWLEDGED' } }),
+      this.prisma.assetRequest.count({ where: { status: 'RETURN_REQUESTED' } }),
+      this.prisma.assetRequest.count({ where: { status: 'MANAGER_RETURN_APPROVED' } }),
+      this.prisma.assetRequest.count({ where: { status: 'RETURNED' } }),
     ]);
 
-    return { total, pending, approved, allocated, acknowledged };
+    return { total, pending, approved, allocated, acknowledged, returnRequested, managerReturnApproved, returned };
   }
 
   async getAssetTypes() {

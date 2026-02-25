@@ -237,47 +237,63 @@ export default function TeamPerformancePage() {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const activeDashboard = selectedTeamData || teamDashboard;
     const data = activeDashboard?.members || [];
-    if (data.length === 0) return;
+    if (data.length === 0) {
+      alert('No team data available to export');
+      return;
+    }
 
-    exportToExcel({
-      filename: `team_performance_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
-      title: `Team Performance - ${activeDashboard?.managerName || 'All Teams'}`,
-      columns: [
-        { key: 'employeeName', header: 'Employee', width: 20 },
-        { key: 'role', header: 'Role', width: 15 },
-        { key: 'overallScore', header: 'Overall Score', width: 12 },
-        { key: 'attendanceScore', header: 'Attendance', width: 12 },
-        { key: 'leaveScore', header: 'Leave Score', width: 12 },
-        { key: 'taskCompletionScore', header: 'Task Completion', width: 14 },
-        { key: 'daysPresent', header: 'Days Present', width: 12 },
-        { key: 'daysAbsent', header: 'Days Absent', width: 12 },
-        { key: 'trend', header: 'Trend', width: 8 },
-      ],
-      data,
-    });
+    try {
+      await exportToExcel({
+        filename: `team_performance_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
+        title: `Team Performance - ${activeDashboard?.managerName || 'All Teams'}`,
+        columns: [
+          { key: 'employeeName', header: 'Employee', width: 20 },
+          { key: 'role', header: 'Role', width: 15 },
+          { key: 'overallScore', header: 'Overall Score', width: 12 },
+          { key: 'attendanceScore', header: 'Attendance', width: 12 },
+          { key: 'leaveScore', header: 'Leave Score', width: 12 },
+          { key: 'taskCompletionScore', header: 'Task Completion', width: 14 },
+          { key: 'daysPresent', header: 'Days Present', width: 12 },
+          { key: 'daysAbsent', header: 'Days Absent', width: 12 },
+          { key: 'trend', header: 'Trend', width: 8 },
+        ],
+        data,
+      });
+    } catch (error) {
+      console.error('Export Excel error:', error);
+      alert('Failed to export Excel. Please try again.');
+    }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const activeDashboard = selectedTeamData || teamDashboard;
     const data = activeDashboard?.members || [];
-    if (data.length === 0) return;
+    if (data.length === 0) {
+      alert('No team data available to export');
+      return;
+    }
 
-    exportToPDF({
-      filename: `team_performance_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
-      title: `Team Performance Report - ${activeDashboard?.managerName || ''}`,
-      columns: [
-        { key: 'employeeName', header: 'Employee', width: 20 },
-        { key: 'role', header: 'Role', width: 15 },
-        { key: 'overallScore', header: 'Score', width: 10 },
-        { key: 'attendanceScore', header: 'Attendance', width: 10 },
-        { key: 'taskCompletionScore', header: 'Tasks', width: 10 },
-        { key: 'trend', header: 'Trend', width: 8 },
-      ],
-      data,
-    });
+    try {
+      await exportToPDF({
+        filename: `team_performance_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
+        title: `Team Performance Report - ${activeDashboard?.managerName || ''}`,
+        columns: [
+          { key: 'employeeName', header: 'Employee', width: 20 },
+          { key: 'role', header: 'Role', width: 15 },
+          { key: 'overallScore', header: 'Score', width: 10 },
+          { key: 'attendanceScore', header: 'Attendance', width: 10 },
+          { key: 'taskCompletionScore', header: 'Tasks', width: 10 },
+          { key: 'trend', header: 'Trend', width: 8 },
+        ],
+        data,
+      });
+    } catch (error) {
+      console.error('Export PDF error:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
   };
 
   return (

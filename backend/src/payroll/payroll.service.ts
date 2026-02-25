@@ -664,9 +664,14 @@ export class PayrollService {
       return holidayDates.has(d.toISOString().split('T')[0]);
     };
 
-    const isAbsent = (dateStr: string): boolean => {
+    const isAbsentOrOnLeave = (dateStr: string): boolean => {
       const status = attendanceMap.get(dateStr);
-      return status === 'ABSENT' || status === 'ABSENT_DOUBLE_DEDUCTION';
+      return (
+        status === 'ABSENT' ||
+        status === 'ABSENT_DOUBLE_DEDUCTION' ||
+        status === 'PAID_LEAVE' ||
+        status === 'UNPAID_LEAVE'
+      );
     };
 
     let sandwichDays = 0;
@@ -694,21 +699,17 @@ export class PayrollService {
       const beforeStr = dayBefore.toISOString().split('T')[0];
       const afterStr = dayAfter.toISOString().split('T')[0];
 
-      // Both sides must be absent for the sandwich rule to apply
+      // Both sides must be absent or on leave for the sandwich rule to apply
       if (
         dayBefore >= startDate &&
         dayAfter <= endDate &&
-        isAbsent(beforeStr) &&
-        isAbsent(afterStr)
+        isAbsentOrOnLeave(beforeStr) &&
+        isAbsentOrOnLeave(afterStr)
       ) {
-        // Count the non-working days in this block (only holidays, not weekends normally paid)
-        // Per spec: holiday marked as "Absent" if absent before AND after
+        // Count ALL non-working days in this block (weekly offs + holidays)
         let d = new Date(current);
         while (d <= blockEnd) {
-          const dStr = d.toISOString().split('T')[0];
-          if (holidayDates.has(dStr)) {
-            sandwichDays++;
-          }
+          sandwichDays++;
           d.setDate(d.getDate() + 1);
         }
       }

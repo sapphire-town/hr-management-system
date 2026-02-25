@@ -35,6 +35,16 @@ export class AllocateAssetDto {
   assetSerialNo: string;
 }
 
+export class ReturnAssetDto {
+  @ApiProperty({ description: 'Reason for returning the asset' })
+  @IsString()
+  returnReason: string;
+
+  @ApiProperty({ description: 'Condition of the asset being returned', example: 'good' })
+  @IsString()
+  returnCondition: string;
+}
+
 export class AssetFilterDto {
   @ApiPropertyOptional({ enum: AssetStatus })
   @IsOptional()

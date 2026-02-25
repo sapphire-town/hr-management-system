@@ -6,6 +6,7 @@ import { Plus, Download, Calendar, Clock, CheckCircle, XCircle, Users, Loader2, 
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
 import { leaveAPI } from '@/lib/api-client';
+import { exportLeavesToExcel } from '@/lib/export-utils';
 
 interface Leave {
   id: string;
@@ -63,7 +64,8 @@ export default function LeavesPage() {
   const [activeTab, setActiveTab] = React.useState('all');
   const [actionLoading, setActionLoading] = React.useState<string | null>(null);
 
-  const isEmployee = user?.role === 'EMPLOYEE';
+  const isEmployee = user?.role === 'EMPLOYEE' || user?.role === 'INTERN';
+  const isIntern = user?.role === 'INTERN';
   const isManager = user?.role === 'MANAGER';
   const isHRHead = user?.role === 'HR_HEAD';
   const isDirector = user?.role === 'DIRECTOR';
@@ -200,49 +202,51 @@ export default function LeavesPage() {
       title="Leave Management"
       description="View and manage leave requests"
       actions={
-        balance?.isIntern ? null : (
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => {}}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: '1px solid #e5e7eb',
-                backgroundColor: '#ffffff',
-                color: '#374151',
-                fontSize: '14px',
-                fontWeight: 500,
-                cursor: 'pointer',
-              }}
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
-            <button
-              onClick={() => router.push('/dashboard/leaves/apply')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: 'none',
-                background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.25)',
-              }}
-            >
-              <Plus className="w-4 h-4" />
-              Apply Leave
-            </button>
-          </div>
-        )
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={() => {
+              if (leaves.length === 0) return;
+              exportLeavesToExcel(leaves);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 16px',
+              borderRadius: '10px',
+              border: '1px solid #e5e7eb',
+              backgroundColor: '#ffffff',
+              color: '#374151',
+              fontSize: '14px',
+              fontWeight: 500,
+              cursor: leaves.length > 0 ? 'pointer' : 'not-allowed',
+              opacity: leaves.length > 0 ? 1 : 0.5,
+            }}
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+          <button
+            onClick={() => router.push('/dashboard/leaves/apply')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 16px',
+              borderRadius: '10px',
+              border: 'none',
+              background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+              color: '#ffffff',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px 0 rgba(124, 58, 237, 0.25)',
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            {isIntern ? 'Apply Unpaid Leave' : 'Apply Leave'}
+          </button>
+        </div>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -250,29 +254,33 @@ export default function LeavesPage() {
         {balance?.isIntern && (
           <div style={{
             ...cardStyle,
-            padding: '32px',
-            textAlign: 'center',
+            padding: '20px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
             background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
             border: '1px solid #fbbf24',
           }}>
             <div style={{
-              width: 64,
-              height: 64,
+              width: 40,
+              height: 40,
               borderRadius: '50%',
               background: '#fbbf24',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 16px',
+              flexShrink: 0,
             }}>
-              <Calendar className="w-8 h-8" style={{ color: '#92400e' }} />
+              <Calendar className="w-5 h-5" style={{ color: '#92400e' }} />
             </div>
-            <h3 style={{ fontSize: 20, fontWeight: 600, color: '#92400e', margin: '0 0 8px 0' }}>
-              Paid Leave Not Available for Interns
-            </h3>
-            <p style={{ fontSize: 14, color: '#a16207', margin: 0, maxWidth: 500, marginLeft: 'auto', marginRight: 'auto' }}>
-              As an intern, you are not eligible for paid leave benefits. If you need time off, please speak directly with your manager to arrange unpaid leave.
-            </p>
+            <div>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: '#92400e', margin: '0 0 4px 0' }}>
+                Intern Leave Policy
+              </h3>
+              <p style={{ fontSize: 13, color: '#a16207', margin: 0 }}>
+                As an intern, you can apply for unpaid leave only. Paid leave types (casual, sick, earned) are not available.
+              </p>
+            </div>
           </div>
         )}
 

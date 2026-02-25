@@ -57,14 +57,14 @@ export class DocumentService {
       },
     });
 
-    // Send notification to employee
-    await this.notificationService.sendNotification({
+    // Send notification to employee (fire-and-forget)
+    this.notificationService.sendNotification({
       recipientId: employee.userId,
       subject: 'New Document Released',
       message: `A new ${dto.documentType.replace('_', ' ')} has been released to you.`,
       type: 'both',
       notificationType: NotificationType.DOCUMENT_RELEASED,
-    });
+    }).catch(err => console.error('Document releaseDocument notification failed:', err));
 
     return document;
   }
@@ -108,13 +108,13 @@ export class DocumentService {
           },
         });
 
-        await this.notificationService.sendNotification({
+        this.notificationService.sendNotification({
           recipientId: employee.userId,
           subject: 'New Document Released',
           message: `A new ${dto.documentType.replace(/_/g, ' ')} has been released to you.`,
           type: 'both',
           notificationType: NotificationType.DOCUMENT_RELEASED,
-        });
+        }).catch(err => console.error('Document bulkReleaseDocument notification failed:', err));
 
         generated.push({
           employeeId: employee.id,
@@ -224,9 +224,9 @@ export class DocumentService {
       },
     });
 
-    // Notify HR about the document upload for verification
+    // Notify HR about the document upload for verification (fire-and-forget)
     if (employee) {
-      await this.notificationService.notifyHRDocumentUploadedForVerification(
+      this.notificationService.notifyHRDocumentUploadedForVerification(
         {
           id: employee.id,
           firstName: employee.firstName,
@@ -235,7 +235,7 @@ export class DocumentService {
         },
         dto.documentType,
         fileName,
-      );
+      ).catch(err => console.error('Document uploadForVerification HR notification failed:', err));
     }
 
     return document;
@@ -305,8 +305,8 @@ export class DocumentService {
       },
     });
 
-    // Send notification to employee about verification result
-    await this.notificationService.notifyEmployeeDocumentVerified(
+    // Send notification to employee about verification result (fire-and-forget)
+    this.notificationService.notifyEmployeeDocumentVerified(
       {
         userId: document.employee.userId,
         email: document.employee.user.email,
@@ -315,7 +315,7 @@ export class DocumentService {
       document.documentType,
       dto.status as 'VERIFIED' | 'REJECTED',
       dto.rejectionReason,
-    );
+    ).catch(err => console.error('Document verifyDocument notification failed:', err));
 
     return updated;
   }
@@ -615,14 +615,14 @@ export class DocumentService {
             },
           });
 
-          // Send notification
-          await this.notificationService.sendNotification({
+          // Send notification (fire-and-forget)
+          this.notificationService.sendNotification({
             recipientId: employee.userId,
             subject: 'New Document Released',
             message: `A new ${template.documentType.replace(/_/g, ' ')} has been released to you.`,
             type: 'both',
             notificationType: NotificationType.DOCUMENT_RELEASED,
-          });
+          }).catch(err => console.error('Document generateDocuments notification failed:', err));
 
           generated.push({
             employeeId: employee.id,

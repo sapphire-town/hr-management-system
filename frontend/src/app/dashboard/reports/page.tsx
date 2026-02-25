@@ -8,18 +8,14 @@ import {
   TrendingUp,
   TrendingDown,
   Calendar,
-  Briefcase,
   Package,
   LogOut,
   Clock,
   CheckCircle,
   XCircle,
   AlertCircle,
-  BarChart3,
-  PieChart,
   Activity,
   Shield,
-  FileText,
   Building,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
@@ -52,15 +48,6 @@ interface LeaveStats {
   onLeaveToday: number;
 }
 
-interface RecruitmentStats {
-  activeDrives: number;
-  totalCandidates: number;
-  selectedCandidates: number;
-  pendingInterviews: number;
-  hiringRequests: number;
-  selectionRate: number;
-}
-
 interface AssetStats {
   total: number;
   assigned: number;
@@ -88,7 +75,7 @@ interface ComprehensiveReports {
   employeeMetrics: EmployeeMetrics;
   attendanceStats: AttendanceStats;
   leaveStats: LeaveStats;
-  recruitmentStats: RecruitmentStats;
+  recruitmentStats?: any;
   assetStats: AssetStats;
   resignationStats: ResignationStats;
   departmentPerformance: DepartmentPerformance[];
@@ -106,7 +93,6 @@ export default function ReportsPage() {
   const { user } = useAuthStore();
   const [loading, setLoading] = React.useState(true);
   const [reports, setReports] = React.useState<ComprehensiveReports | null>(null);
-  const [recruitmentChart, setRecruitmentChart] = React.useState<ChartDataPoint[]>([]);
   const [resignationChart, setResignationChart] = React.useState<ChartDataPoint[]>([]);
   const [assetChart, setAssetChart] = React.useState<ChartDataPoint[]>([]);
   const [departmentChart, setDepartmentChart] = React.useState<ChartDataPoint[]>([]);
@@ -122,16 +108,14 @@ export default function ReportsPage() {
   const fetchReports = async () => {
     try {
       setLoading(true);
-      const [reportsRes, recruitmentRes, resignationRes, assetRes, deptRes] = await Promise.all([
+      const [reportsRes, resignationRes, assetRes, deptRes] = await Promise.all([
         apiClient.get('/dashboard/reports/comprehensive'),
-        apiClient.get('/dashboard/charts/recruitment'),
         apiClient.get('/dashboard/charts/resignation'),
         apiClient.get('/dashboard/charts/assets'),
         apiClient.get('/dashboard/charts/department'),
       ]);
 
       setReports(reportsRes.data);
-      setRecruitmentChart(recruitmentRes.data || []);
       setResignationChart(resignationRes.data || []);
       setAssetChart(assetRes.data || []);
       setDepartmentChart(deptRes.data || []);
@@ -367,9 +351,8 @@ export default function ReportsPage() {
           </div>
         </section>
 
-        {/* Leave & Recruitment Row */}
+        {/* Leave Statistics */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px' }}>
-          {/* Leave Statistics */}
           <div style={cardStyle}>
             <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -427,70 +410,6 @@ export default function ReportsPage() {
                   </div>
                   <span style={{ fontSize: '24px', fontWeight: 700, color: '#111827' }}>
                     {reports.leaveStats.onLeaveToday}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Recruitment Statistics */}
-          <div style={cardStyle}>
-            <div style={{ padding: '20px', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Briefcase style={{ height: '20px', width: '20px', color: '#3b82f6' }} />
-                Recruitment Overview
-              </h3>
-              <p style={{ fontSize: '13px', color: '#6b7280', margin: '4px 0 0' }}>
-                Placement drives and candidate statistics
-              </p>
-            </div>
-            <div style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={iconContainerStyle('#3b82f6')}>
-                      <Activity style={{ height: '20px', width: '20px' }} />
-                    </div>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>Active Drives</span>
-                  </div>
-                  <span style={{ fontSize: '24px', fontWeight: 700, color: '#111827' }}>
-                    {reports.recruitmentStats.activeDrives}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={iconContainerStyle('#7c3aed')}>
-                      <Users style={{ height: '20px', width: '20px' }} />
-                    </div>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>Total Candidates</span>
-                  </div>
-                  <span style={{ fontSize: '24px', fontWeight: 700, color: '#111827' }}>
-                    {reports.recruitmentStats.totalCandidates}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={iconContainerStyle('#22c55e')}>
-                      <CheckCircle style={{ height: '20px', width: '20px' }} />
-                    </div>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>Selected</span>
-                  </div>
-                  <span style={{ fontSize: '24px', fontWeight: 700, color: '#111827' }}>
-                    {reports.recruitmentStats.selectedCandidates}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={iconContainerStyle('#f59e0b')}>
-                      <TrendingUp style={{ height: '20px', width: '20px' }} />
-                    </div>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>Selection Rate</span>
-                  </div>
-                  <span style={{ fontSize: '24px', fontWeight: 700, color: '#111827' }}>
-                    {reports.recruitmentStats.selectionRate}%
                   </span>
                 </div>
               </div>
@@ -717,63 +636,7 @@ export default function ReportsPage() {
           </div>
         </section>
 
-        {/* Charts Section */}
-        {recruitmentChart.length > 0 && (
-          <section>
-            <div style={{ marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <BarChart3 style={{ height: '24px', width: '24px', color: '#3b82f6' }} />
-                Recruitment Trends
-              </h2>
-              <p style={{ fontSize: '14px', color: '#6b7280', margin: 0 }}>
-                Last 6 months placement drive statistics
-              </p>
-            </div>
-
-            <div style={cardStyle}>
-              <div style={{ padding: '20px' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ backgroundColor: '#f9fafb' }}>
-                        <th style={{ padding: '12px', textAlign: 'left', fontSize: '13px', fontWeight: 600, color: '#6b7280' }}>
-                          Month
-                        </th>
-                        <th style={{ padding: '12px', textAlign: 'center', fontSize: '13px', fontWeight: 600, color: '#6b7280' }}>
-                          Drives
-                        </th>
-                        <th style={{ padding: '12px', textAlign: 'center', fontSize: '13px', fontWeight: 600, color: '#6b7280' }}>
-                          Candidates
-                        </th>
-                        <th style={{ padding: '12px', textAlign: 'center', fontSize: '13px', fontWeight: 600, color: '#6b7280' }}>
-                          Selected
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recruitmentChart.map((item, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '12px', fontSize: '14px', fontWeight: 500, color: '#374151' }}>
-                            {item.month}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'center', fontSize: '16px', fontWeight: 600, color: '#3b82f6' }}>
-                            {item.drives}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'center', fontSize: '16px', fontWeight: 600, color: '#7c3aed' }}>
-                            {item.candidates}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'center', fontSize: '16px', fontWeight: 600, color: '#22c55e' }}>
-                            {item.selected}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
+        {/* Recruitment Trends chart removed — interviewer role blocked */}
       </div>
     </DashboardLayout>
   );

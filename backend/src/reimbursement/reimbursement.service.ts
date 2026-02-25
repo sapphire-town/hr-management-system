@@ -47,14 +47,14 @@ export class ReimbursementService {
       },
     });
 
-    // Notify manager
+    // Notify manager (fire-and-forget)
     if (employee.manager) {
-      await this.notificationService.sendNotification({
+      this.notificationService.sendNotification({
         recipientId: employee.manager.userId,
         subject: 'New Reimbursement Claim',
         message: `${employee.firstName} ${employee.lastName} has submitted a reimbursement claim for ₹${dto.amount} (${dto.category}).`,
         type: 'both',
-      });
+      }).catch(err => console.error('Reimbursement createClaim notification failed:', err));
     }
 
     return claim;
@@ -185,19 +185,19 @@ export class ReimbursementService {
       },
     });
 
-    // Notify HR
-    const hrUsers = await this.prisma.user.findMany({
+    // Notify HR (fire-and-forget)
+    this.prisma.user.findMany({
       where: { role: { in: ['HR_HEAD', 'DIRECTOR'] } },
-    });
-
-    for (const hr of hrUsers) {
-      await this.notificationService.sendNotification({
-        recipientId: hr.id,
-        subject: 'Reimbursement Pending HR Approval',
-        message: `Reimbursement claim for ₹${claim.amount} by ${claim.employee.firstName} ${claim.employee.lastName} is pending HR approval.`,
-        type: 'both',
-      });
-    }
+    }).then(hrUsers => {
+      for (const hr of hrUsers) {
+        this.notificationService.sendNotification({
+          recipientId: hr.id,
+          subject: 'Reimbursement Pending HR Approval',
+          message: `Reimbursement claim for ₹${claim.amount} by ${claim.employee.firstName} ${claim.employee.lastName} is pending HR approval.`,
+          type: 'both',
+        }).catch(err => console.error('Reimbursement managerApprove HR notification failed:', err));
+      }
+    }).catch(err => console.error('Reimbursement managerApprove HR user lookup failed:', err));
 
     return updated;
   }
@@ -226,13 +226,13 @@ export class ReimbursementService {
       },
     });
 
-    // Notify employee
-    await this.notificationService.sendNotification({
+    // Notify employee (fire-and-forget)
+    this.notificationService.sendNotification({
       recipientId: employee.userId,
       subject: 'Reimbursement Rejected',
       message: `Your reimbursement claim for ₹${claim.amount} has been rejected. Reason: ${dto.rejectionReason}`,
       type: 'both',
-    });
+    }).catch(err => console.error('Reimbursement managerReject notification failed:', err));
 
     return updated;
   }
@@ -252,19 +252,20 @@ export class ReimbursementService {
       },
     });
 
-    const employee = await this.prisma.employee.findUnique({
+    // Employee lookup + notification (fire-and-forget)
+    this.prisma.employee.findUnique({
       where: { id: claim.employeeId },
       include: { user: true },
-    });
-
-    if (employee) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.userId,
-        subject: 'Reimbursement Approved',
-        message: `Your reimbursement claim for ₹${claim.amount} has been approved. Payment will be processed soon.`,
-        type: 'both',
-      });
-    }
+    }).then(employee => {
+      if (employee) {
+        this.notificationService.sendNotification({
+          recipientId: employee.userId,
+          subject: 'Reimbursement Approved',
+          message: `Your reimbursement claim for ₹${claim.amount} has been approved. Payment will be processed soon.`,
+          type: 'both',
+        }).catch(err => console.error('Reimbursement hrApprove notification failed:', err));
+      }
+    }).catch(err => console.error('Reimbursement hrApprove employee lookup failed:', err));
 
     return updated;
   }
@@ -284,19 +285,20 @@ export class ReimbursementService {
       },
     });
 
-    const employee = await this.prisma.employee.findUnique({
+    // Employee lookup + notification (fire-and-forget)
+    this.prisma.employee.findUnique({
       where: { id: claim.employeeId },
       include: { user: true },
-    });
-
-    if (employee) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.userId,
-        subject: 'Reimbursement Rejected',
-        message: `Your reimbursement claim for ₹${claim.amount} has been rejected by HR. Reason: ${dto.rejectionReason}`,
-        type: 'both',
-      });
-    }
+    }).then(employee => {
+      if (employee) {
+        this.notificationService.sendNotification({
+          recipientId: employee.userId,
+          subject: 'Reimbursement Rejected',
+          message: `Your reimbursement claim for ₹${claim.amount} has been rejected by HR. Reason: ${dto.rejectionReason}`,
+          type: 'both',
+        }).catch(err => console.error('Reimbursement hrReject notification failed:', err));
+      }
+    }).catch(err => console.error('Reimbursement hrReject employee lookup failed:', err));
 
     return updated;
   }
@@ -316,19 +318,20 @@ export class ReimbursementService {
       },
     });
 
-    const employee = await this.prisma.employee.findUnique({
+    // Employee lookup + notification (fire-and-forget)
+    this.prisma.employee.findUnique({
       where: { id: claim.employeeId },
       include: { user: true },
-    });
-
-    if (employee) {
-      await this.notificationService.sendNotification({
-        recipientId: employee.userId,
-        subject: 'Reimbursement Payment Processed',
-        message: `Payment of ₹${claim.amount} for your reimbursement claim has been processed. Please acknowledge receipt.`,
-        type: 'both',
-      });
-    }
+    }).then(employee => {
+      if (employee) {
+        this.notificationService.sendNotification({
+          recipientId: employee.userId,
+          subject: 'Reimbursement Payment Processed',
+          message: `Payment of ₹${claim.amount} for your reimbursement claim has been processed. Please acknowledge receipt.`,
+          type: 'both',
+        }).catch(err => console.error('Reimbursement processPayment notification failed:', err));
+      }
+    }).catch(err => console.error('Reimbursement processPayment employee lookup failed:', err));
 
     return updated;
   }

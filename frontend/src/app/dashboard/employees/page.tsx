@@ -37,6 +37,7 @@ import { DashboardLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import { employeeAPI, roleAPI, performanceAPI, documentAPI } from '@/lib/api-client';
+import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,7 @@ interface Employee {
   phone?: string;
   address?: string;
   joinDate: string;
+  isInterviewer?: boolean;
   user: {
     id: string;
     email: string;
@@ -96,11 +98,12 @@ interface Manager {
   role: { name: string };
 }
 
-const USER_ROLES = ['EMPLOYEE', 'MANAGER', 'HR_HEAD', 'DIRECTOR', 'INTERVIEWER', 'INTERN'];
+const USER_ROLES = ['EMPLOYEE', 'MANAGER', 'HR_HEAD', 'DIRECTOR', 'INTERN'];
 
 export default function EmployeesPage() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { toast } = useToast();
   const [employees, setEmployees] = React.useState<Employee[]>([]);
   const [roles, setRoles] = React.useState<Role[]>([]);
   const [managers, setManagers] = React.useState<Manager[]>([]);
@@ -272,9 +275,23 @@ const resetFormData = React.useCallback(() => {
 
 
   const handleAddEmployee = async () => {
-    if (!formData.salary || parseFloat(formData.salary) <= 0) {
-      alert('Please enter a valid salary');
+    // Validate email
+    const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+    if (!formData.email || !emailRegex.test(formData.email)) {
+      toast({ title: 'Invalid email', description: 'Please enter a valid email address.', variant: 'destructive' });
       return;
+    }
+    if (!formData.salary || parseFloat(formData.salary) <= 0) {
+      toast({ title: 'Invalid salary', description: 'Please enter a valid salary amount.', variant: 'destructive' });
+      return;
+    }
+    // Validate phone if provided
+    if (formData.phone) {
+      const digits = formData.phone.replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 13) {
+        toast({ title: 'Invalid phone', description: 'Phone number must be 10-13 digits.', variant: 'destructive' });
+        return;
+      }
     }
 
     try {
@@ -315,9 +332,9 @@ const resetFormData = React.useCallback(() => {
       console.error('Create employee error:', error);
       const message = error.response?.data?.message;
       if (Array.isArray(message)) {
-        alert('Validation errors:\n' + message.join('\n'));
+        toast({ title: 'Validation errors', description: message.join(', '), variant: 'destructive' });
       } else {
-        alert(message || 'Failed to create employee');
+        toast({ title: 'Create failed', description: message || 'Failed to create employee.', variant: 'destructive' });
       }
     } finally {
       setSubmitting(false);
@@ -326,6 +343,14 @@ const resetFormData = React.useCallback(() => {
 
   const handleUpdateEmployee = async () => {
     if (!selectedEmployee) return;
+    // Validate phone if provided
+    if (formData.phone) {
+      const digits = formData.phone.replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 13) {
+        toast({ title: 'Invalid phone', description: 'Phone number must be 10-13 digits.', variant: 'destructive' });
+        return;
+      }
+    }
     try {
       setSubmitting(true);
       const payload = {
@@ -343,8 +368,9 @@ const resetFormData = React.useCallback(() => {
       setShowEditModal(false);
       setSelectedEmployee(null);
       fetchData();
+      toast({ title: 'Employee updated', description: 'Employee details saved successfully.', variant: 'success' });
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to update employee');
+      toast({ title: 'Update failed', description: error.response?.data?.message || 'Failed to update employee.', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -364,7 +390,7 @@ const resetFormData = React.useCallback(() => {
       setPromoteData({ newUserRole: '', newRoleId: '', newSalary: '' });
       fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to promote employee');
+      toast({ title: 'Promote failed', description: error.response?.data?.message || 'Failed to promote employee.', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -379,7 +405,7 @@ const resetFormData = React.useCallback(() => {
       setSelectedEmployee(null);
       fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to assign manager');
+      toast({ title: 'Assign failed', description: error.response?.data?.message || 'Failed to assign manager.', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -394,7 +420,7 @@ const resetFormData = React.useCallback(() => {
       setSelectedEmployee(null);
       fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to deactivate employee');
+      toast({ title: 'Deactivate failed', description: error.response?.data?.message || 'Failed to deactivate employee.', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -405,7 +431,7 @@ const resetFormData = React.useCallback(() => {
       await employeeAPI.reactivate(emp.id);
       fetchData();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to reactivate employee');
+      toast({ title: 'Reactivate failed', description: error.response?.data?.message || 'Failed to reactivate employee.', variant: 'destructive' });
     }
   };
 
@@ -418,7 +444,7 @@ const resetFormData = React.useCallback(() => {
       });
       setShowCredentialsModal(true);
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to reset password');
+      toast({ title: 'Reset failed', description: error.response?.data?.message || 'Failed to reset password.', variant: 'destructive' });
     }
   };
 
@@ -437,7 +463,7 @@ const resetFormData = React.useCallback(() => {
       window.open(url, '_blank');
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (error) {
-      alert('Failed to view document');
+      toast({ title: 'View failed', description: 'Failed to view document.', variant: 'destructive' });
     }
   };
 
@@ -464,7 +490,7 @@ const resetFormData = React.useCallback(() => {
       setShowVerifyDocModal(false);
       setSelectedVerifyDoc(null);
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to verify document');
+      toast({ title: 'Verify failed', description: error.response?.data?.message || 'Failed to verify document.', variant: 'destructive' });
     } finally {
       setVerifyingDoc(false);
     }
@@ -473,7 +499,7 @@ const resetFormData = React.useCallback(() => {
   // Search employee by ID
   const handleSearchById = async () => {
     if (!searchById.trim()) {
-      alert('Please enter an Employee ID');
+      toast({ title: 'Missing ID', description: 'Please enter an Employee ID.', variant: 'destructive' });
       return;
     }
     try {
@@ -487,7 +513,7 @@ const resetFormData = React.useCallback(() => {
       setShowDetailsModal(true);
       setSearchById('');
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Employee not found');
+      toast({ title: 'Not found', description: error.response?.data?.message || 'Employee not found.', variant: 'destructive' });
     } finally {
       setSearchingById(false);
     }
@@ -505,7 +531,7 @@ const resetFormData = React.useCallback(() => {
       setShowDetailsModal(true);
       setActionMenuOpen(null);
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to load employee details');
+      toast({ title: 'Load failed', description: error.response?.data?.message || 'Failed to load employee details.', variant: 'destructive' });
     }
   };
 
@@ -565,8 +591,6 @@ const resetFormData = React.useCallback(() => {
         return { bg: '#0891b2', text: '#fff' };
       case 'MANAGER':
         return { bg: '#059669', text: '#fff' };
-      case 'INTERVIEWER':
-        return { bg: '#d97706', text: '#fff' };
       default:
         return { bg: '#6b7280', text: '#fff' };
     }
@@ -594,12 +618,12 @@ const resetFormData = React.useCallback(() => {
         try {
           const errorText = await error.response.data.text();
           const errorJson = JSON.parse(errorText);
-          alert(errorJson.message || 'Failed to download template');
+          toast({ title: 'Download failed', description: errorJson.message || 'Failed to download template.', variant: 'destructive' });
         } catch {
-          alert('Failed to download template. Please ensure the backend server is running.');
+          toast({ title: 'Download failed', description: 'Failed to download template. Please ensure the backend server is running.', variant: 'destructive' });
         }
       } else {
-        alert(error.response?.data?.message || error.message || 'Failed to download template. Please ensure the backend server is running.');
+        toast({ title: 'Download failed', description: error.response?.data?.message || error.message || 'Failed to download template.', variant: 'destructive' });
       }
     }
   };
@@ -615,7 +639,7 @@ const resetFormData = React.useCallback(() => {
       setBulkImportResults(response.data);
       fetchData(); // Refresh the employee list
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to import employees');
+      toast({ title: 'Import failed', description: error.response?.data?.message || 'Failed to import employees.', variant: 'destructive' });
     } finally {
       setBulkImporting(false);
     }
@@ -629,7 +653,7 @@ const resetFormData = React.useCallback(() => {
         'application/vnd.ms-excel',
       ];
       if (!validTypes.includes(file.type) && !file.name.endsWith('.xlsx')) {
-        alert('Please upload an Excel file (.xlsx)');
+        toast({ title: 'Invalid file', description: 'Please upload an Excel file (.xlsx).', variant: 'destructive' });
         return;
       }
       setBulkImportFile(file);
@@ -909,17 +933,20 @@ const resetFormData = React.useCallback(() => {
                       {emp.role?.name || '-'}
                     </td>
                     <td style={{ padding: '16px 20px' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '4px 10px',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        fontWeight: 500,
-                        background: getRoleBadgeColor(emp.user.role).bg,
-                        color: getRoleBadgeColor(emp.user.role).text,
-                      }}>
-                        {emp.user.role.replace('_', ' ')}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 500,
+                          background: getRoleBadgeColor(emp.user.role).bg,
+                          color: getRoleBadgeColor(emp.user.role).text,
+                        }}>
+                          {emp.user.role.replace('_', ' ')}
+                        </span>
+                        {/* Interviewer badge hidden — role is currently blocked */}
+                      </div>
                     </td>
                     <td style={{ padding: '16px 20px', color: '#475569' }}>
                       {emp.manager ? `${emp.manager.firstName} ${emp.manager.lastName}` : '-'}
@@ -1265,8 +1292,14 @@ const resetFormData = React.useCallback(() => {
             <div>
               <Label>Phone</Label>
               <Input
+                type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9+\-\s]/g, '');
+                  setFormData({ ...formData, phone: val });
+                }}
+                placeholder="e.g., 9876543210"
+                maxLength={13}
               />
             </div>
             <div>
@@ -1348,8 +1381,14 @@ const resetFormData = React.useCallback(() => {
             <div>
               <Label>Phone</Label>
               <Input
+                type="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9+\-\s]/g, '');
+                  setFormData({ ...formData, phone: val });
+                }}
+                placeholder="e.g., 9876543210"
+                maxLength={13}
               />
             </div>
             <div>

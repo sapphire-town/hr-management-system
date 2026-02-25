@@ -40,9 +40,9 @@ export function useExport() {
         }
 
         if (format === 'excel') {
-          exportToExcel(options);
+          await exportToExcel(options);
         } else {
-          exportToPDF(options);
+          await exportToPDF(options);
         }
 
         toast({
@@ -63,9 +63,9 @@ export function useExport() {
   );
 
   const exportEmployees = useCallback(
-    (employees: any[]) => {
+    async (employees: any[]) => {
       try {
-        exportEmployeesToExcel(employees);
+        await exportEmployeesToExcel(employees);
         toast({
           title: 'Export successful',
           description: 'Employee data exported to Excel.',
@@ -84,9 +84,9 @@ export function useExport() {
   );
 
   const exportAttendance = useCallback(
-    (records: any[]) => {
+    async (records: any[]) => {
       try {
-        exportAttendanceToExcel(records);
+        await exportAttendanceToExcel(records);
         toast({
           title: 'Export successful',
           description: 'Attendance data exported to Excel.',
@@ -105,9 +105,9 @@ export function useExport() {
   );
 
   const exportLeaves = useCallback(
-    (leaves: any[]) => {
+    async (leaves: any[]) => {
       try {
-        exportLeavesToExcel(leaves);
+        await exportLeavesToExcel(leaves);
         toast({
           title: 'Export successful',
           description: 'Leave data exported to Excel.',

@@ -133,9 +133,9 @@ export default function PayslipsPage() {
     setDetailModalOpen(true);
   };
 
-  const handleDownloadPDF = (e: React.MouseEvent, payslip: Payslip) => {
+  const handleDownloadPDF = async (e: React.MouseEvent, payslip: Payslip) => {
     e.stopPropagation();
-    exportPayslipToPDF(payslip, null, templateConfig);
+    await exportPayslipToPDF(payslip, null, templateConfig);
   };
 
   // Calculate year totals

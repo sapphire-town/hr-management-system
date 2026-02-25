@@ -8,6 +8,7 @@ import {
   IsDateString,
   IsUUID,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { EmployeeType, UserRole, InternType } from '@prisma/client';
 
@@ -246,6 +247,7 @@ export class UpdateMyProfileDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @ValidateIf((o) => o.emergencyContactEmail !== '')
   @IsEmail()
   emergencyContactEmail?: string;
 

@@ -241,7 +241,19 @@ export default function DocumentsPage() {
   const handleDownload = async (doc: ReleasedDocument) => {
     try {
       const response = await documentAPI.download(doc.id);
-      const blob = new Blob([response.data]);
+      const ext = doc.fileName.split('.').pop()?.toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        pdf: 'application/pdf',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      };
+      const blob = response.data instanceof Blob
+        ? new Blob([response.data], { type: response.data.type || mimeTypes[ext || ''] || 'application/octet-stream' })
+        : new Blob([response.data], { type: mimeTypes[ext || ''] || 'application/octet-stream' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -420,7 +432,18 @@ export default function DocumentsPage() {
   const handleViewDocument = async (docId: string, fileName: string) => {
     try {
       const response = await documentAPI.viewVerificationDocument(docId);
-      const blob = new Blob([response.data]);
+      // response.data is already a Blob with correct MIME type from responseType: 'blob'
+      const ext = fileName.split('.').pop()?.toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        pdf: 'application/pdf',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+      };
+      const blob = response.data instanceof Blob
+        ? new Blob([response.data], { type: response.data.type || mimeTypes[ext || ''] || 'application/octet-stream' })
+        : new Blob([response.data], { type: mimeTypes[ext || ''] || 'application/octet-stream' });
       const url = window.URL.createObjectURL(blob);
 
       // Open in new tab for viewing
@@ -430,7 +453,7 @@ export default function DocumentsPage() {
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
     } catch (error) {
       console.error('Error viewing document:', error);
-      alert('Failed to view document');
+      alert('Failed to view document. You may not have permission to view this file.');
     }
   };
 

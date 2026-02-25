@@ -60,6 +60,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       employeeId: user.employee?.id,
+      isInterviewer: user.employee?.isInterviewer || false,
     };
 
     return {
@@ -68,6 +69,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
+        isInterviewer: user.employee?.isInterviewer || false,
         employee: user.employee,
       },
     };

@@ -8,10 +8,49 @@ export class FeedbackService {
 
   // Employee submits feedback (about manager, company, etc.)
   async create(fromId: string, dto: CreateFeedbackDto) {
+    let toId = dto.toId || null;
+
+    // Auto-route feedback based on subject if no explicit recipient
+    if (!toId && dto.subject) {
+      try {
+        if (dto.subject === 'Manager') {
+          // Route to the employee's direct manager
+          const employee = await this.prisma.employee.findUnique({
+            where: { id: fromId },
+            select: { managerId: true },
+          });
+          if (employee?.managerId) {
+            toId = employee.managerId;
+          }
+        } else if (dto.subject === 'HR Head') {
+          // Route to the first HR Head
+          const hrHead = await this.prisma.user.findFirst({
+            where: { role: 'HR_HEAD', isActive: true },
+            select: { employee: { select: { id: true } } },
+          });
+          if (hrHead?.employee?.id) {
+            toId = hrHead.employee.id;
+          }
+        } else if (dto.subject === 'Director') {
+          // Route to the first Director
+          const director = await this.prisma.user.findFirst({
+            where: { role: 'DIRECTOR', isActive: true },
+            select: { employee: { select: { id: true } } },
+          });
+          if (director?.employee?.id) {
+            toId = director.employee.id;
+          }
+        }
+      } catch (err) {
+        // If auto-routing fails, proceed without a recipient
+        console.error('Failed to auto-route feedback:', err);
+      }
+    }
+
     return this.prisma.feedback.create({
       data: {
         fromId,
-        toId: dto.toId || null,
+        toId,
         subject: dto.subject,
         content: dto.content,
         isConfidential: dto.isConfidential ?? true,

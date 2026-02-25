@@ -114,45 +114,62 @@ export class LeaveService {
       },
     });
 
-    // Send notification to manager
+    // Send notification to manager (fire-and-forget)
     if (employee.manager?.user?.email) {
-      try {
-        await this.notificationService.sendLeaveStatusEmail(
-          employee.manager.user.email,
-          leave.id,
-          `New Leave Request from ${employee.firstName} ${employee.lastName}`,
-          `${dto.leaveType} leave for ${workingDays} days (${startDate.toDateString()} - ${endDate.toDateString()})`,
-        );
-      } catch (error) {
-        console.error('Failed to send notification to manager:', error);
-      }
+      this.notificationService.sendLeaveStatusEmail(
+        employee.manager.user.email,
+        leave.id,
+        `New Leave Request from ${employee.firstName} ${employee.lastName}`,
+        `${dto.leaveType} leave for ${workingDays} days (${startDate.toDateString()} - ${endDate.toDateString()})`,
+      ).catch(err => console.error('Leave notification to manager failed:', err));
     }
 
     return leave;
   }
 
+  /**
+   * Calculate leave days between two dates.
+   * Sandwich policy: weekly offs and official holidays that are sandwiched
+   * between leave working days are counted as additional leave days.
+   * Returns total = pure working days + sandwiched days.
+   */
   private async calculateWorkingDays(startDate: Date, endDate: Date): Promise<number> {
-    let workingDays = 0;
     const current = new Date(startDate);
 
     // Fetch configured working days from CompanySettings
     const settings = await this.prisma.companySettings.findFirst();
     const configuredWorkingDays: number[] = (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
 
+    // Collect all dates and categorize them
+    const allDates: { date: Date; isRegularLeaveDay: boolean }[] = [];
     while (current <= endDate) {
       const dayOfWeek = current.getDay();
-      // Skip days not in configured working days
-      if (configuredWorkingDays.includes(dayOfWeek)) {
-        // Check if it's a holiday
-        const isHoliday = await this.holidayService.isHoliday(current);
-        if (!isHoliday) {
-          workingDays++;
-        }
-      }
+      const isWorking = configuredWorkingDays.includes(dayOfWeek);
+      const isHoliday = isWorking ? await this.holidayService.isHoliday(new Date(current)) : false;
+      allDates.push({
+        date: new Date(current),
+        isRegularLeaveDay: isWorking && !isHoliday,
+      });
       current.setDate(current.getDate() + 1);
     }
 
-    return workingDays;
+    let pureWorkingDays = 0;
+    let sandwichDays = 0;
+
+    for (let i = 0; i < allDates.length; i++) {
+      if (allDates[i].isRegularLeaveDay) {
+        pureWorkingDays++;
+      } else {
+        // Weekly off or holiday — check if sandwiched between leave working days
+        const hasLeaveBefore = allDates.slice(0, i).some(d => d.isRegularLeaveDay);
+        const hasLeaveAfter = allDates.slice(i + 1).some(d => d.isRegularLeaveDay);
+        if (hasLeaveBefore && hasLeaveAfter) {
+          sandwichDays++;
+        }
+      }
+    }
+
+    return pureWorkingDays + sandwichDays;
   }
 
   async findAll(filters: LeaveFilterDto) {
@@ -363,7 +380,8 @@ export class LeaveService {
   /**
    * Create leave attendance records for each working day of an approved leave.
    * Uses PAID_LEAVE for paid leave types, UNPAID_LEAVE for unpaid leave.
-   * Skips weekends, holidays, and days that already have attendance records.
+   * Sandwich policy: holidays between leave dates are marked as leave too.
+   * Only skips weekends and days that already have attendance records.
    */
   private async createLeaveAttendanceRecords(leave: {
     id: string;
@@ -389,13 +407,10 @@ export class LeaveService {
 
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dayOfWeek = d.getDay();
-        // Skip days not in configured working days
+        // Skip days not in configured working days (weekends)
         if (!configuredWorkingDays.includes(dayOfWeek)) continue;
 
-        // Skip holidays
-        const isHoliday = await this.holidayService.isHoliday(new Date(d));
-        if (isHoliday) continue;
-
+        // Sandwich policy: do NOT skip holidays — they count as leave days
         const dateForRecord = new Date(d);
         dateForRecord.setHours(0, 0, 0, 0);
 
@@ -408,13 +423,16 @@ export class LeaveService {
         });
 
         if (!existing) {
+          const isHoliday = await this.holidayService.isHoliday(new Date(d));
           await this.prisma.attendance.create({
             data: {
               employeeId: leave.employeeId,
               date: dateForRecord,
               status: attendanceStatus,
               markedBy: 'SYSTEM',
-              notes: `${leave.leaveType} Leave (Auto-recorded from approved leave request)`,
+              notes: isHoliday
+                ? `${leave.leaveType} Leave on Official Holiday - Sandwich Policy (Auto-recorded)`
+                : `${leave.leaveType} Leave (Auto-recorded from approved leave request)`,
             },
           });
         }

@@ -42,7 +42,8 @@ interface Interviewer {
   id: string;
   firstName: string;
   lastName: string;
-  user: { email: string; role: string };
+  isInterviewer?: boolean;
+  user: { email: string; role: string; isActive?: boolean };
   role: { name: string };
 }
 
@@ -67,6 +68,7 @@ export default function RecruitmentPage() {
   });
 
   const [selectedInterviewers, setSelectedInterviewers] = React.useState<string[]>([]);
+  const [interviewerSearch, setInterviewerSearch] = React.useState('');
 
   const isHROrDirector = user?.role === 'HR_HEAD' || user?.role === 'DIRECTOR';
 
@@ -81,8 +83,16 @@ export default function RecruitmentPage() {
       setStats(statsRes.data);
 
       if (isHROrDirector) {
-        const interviewersRes = await recruitmentAPI.getAvailableInterviewers();
-        setInterviewers(interviewersRes.data || []);
+        const employeesRes = await employeeAPI.getAll({ limit: 500, status: 'active' });
+        const allEmployees = (employeesRes.data.data || []).map((emp: any) => ({
+          id: emp.id,
+          firstName: emp.firstName,
+          lastName: emp.lastName,
+          isInterviewer: emp.isInterviewer,
+          user: { email: emp.user.email, role: emp.user.role, isActive: emp.user.isActive },
+          role: { name: emp.role?.name || '-' },
+        }));
+        setInterviewers(allEmployees);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -162,6 +172,7 @@ export default function RecruitmentPage() {
   const openAssignModal = (drive: PlacementDrive) => {
     setSelectedDrive(drive);
     setSelectedInterviewers(drive.interviewers.map((i) => i.interviewer.id));
+    setInterviewerSearch('');
     setShowAssignModal(true);
     setActionMenuOpen(null);
   };
@@ -849,17 +860,46 @@ export default function RecruitmentPage() {
             <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: 600, color: '#111827' }}>
               Assign Interviewers
             </h3>
-            <p style={{ margin: '0 0 24px 0', fontSize: '14px', color: '#6b7280' }}>
-              Select interviewers for <strong>{selectedDrive.collegeName}</strong>
+            <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#6b7280' }}>
+              Select employees to assign as interviewers for <strong>{selectedDrive.collegeName}</strong>
             </p>
 
-            <div style={{ maxHeight: '300px', overflow: 'auto', marginBottom: '20px' }}>
+            <input
+              type="text"
+              placeholder="Search by name, email or role..."
+              value={interviewerSearch}
+              onChange={(e) => setInterviewerSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid #e5e7eb',
+                fontSize: '14px',
+                marginBottom: '12px',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+
+            <div style={{ maxHeight: '350px', overflow: 'auto', marginBottom: '20px' }}>
               {interviewers.length === 0 ? (
                 <p style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>
-                  No interviewers available
+                  No employees available
                 </p>
               ) : (
-                interviewers.map((interviewer) => (
+                interviewers
+                  .filter((emp) => {
+                    if (!interviewerSearch) return true;
+                    const q = interviewerSearch.toLowerCase();
+                    return (
+                      emp.firstName.toLowerCase().includes(q) ||
+                      emp.lastName.toLowerCase().includes(q) ||
+                      emp.user.email.toLowerCase().includes(q) ||
+                      emp.role.name.toLowerCase().includes(q) ||
+                      emp.user.role.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((interviewer) => (
                   <label
                     key={interviewer.id}
                     style={{
@@ -884,9 +924,22 @@ export default function RecruitmentPage() {
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: '14px', fontWeight: 500, color: '#111827' }}>
                         {interviewer.firstName} {interviewer.lastName}
+                        {interviewer.isInterviewer && (
+                          <span style={{
+                            marginLeft: 8,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            background: '#dbeafe',
+                            color: '#1e40af',
+                          }}>
+                            Interviewer
+                          </span>
+                        )}
                       </p>
                       <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
-                        {interviewer.role.name} - {interviewer.user.role}
+                        {interviewer.role.name} &middot; {interviewer.user.role.replace('_', ' ')} &middot; {interviewer.user.email}
                       </p>
                     </div>
                   </label>

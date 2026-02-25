@@ -283,18 +283,25 @@ export class RecruitmentService {
       throw new NotFoundException('Placement drive not found');
     }
 
-    // Verify all interviewers exist and can be interviewers
+    // Verify all employees exist and are active
     const employees = await this.prisma.employee.findMany({
       where: {
         id: { in: dto.interviewerIds },
-        user: {
-          role: { in: [UserRole.INTERVIEWER, UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR] },
-        },
+        user: { isActive: true },
       },
     });
 
     if (employees.length !== dto.interviewerIds.length) {
-      throw new BadRequestException('Some interviewers are not valid or do not have interviewer permissions');
+      throw new BadRequestException('Some employees are not valid or are inactive');
+    }
+
+    // Auto-set isInterviewer flag for employees who don't have it yet
+    const nonInterviewers = employees.filter((e) => !e.isInterviewer);
+    if (nonInterviewers.length > 0) {
+      await this.prisma.employee.updateMany({
+        where: { id: { in: nonInterviewers.map((e) => e.id) } },
+        data: { isInterviewer: true },
+      });
     }
 
     // Get existing interviewers before any changes
@@ -333,10 +340,18 @@ export class RecruitmentService {
   async getAvailableInterviewers() {
     return this.prisma.employee.findMany({
       where: {
-        user: {
-          role: { in: [UserRole.INTERVIEWER, UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR] },
-          isActive: true,
-        },
+        OR: [
+          {
+            user: {
+              role: { in: [UserRole.INTERVIEWER, UserRole.MANAGER, UserRole.HR_HEAD, UserRole.DIRECTOR] },
+              isActive: true,
+            },
+          },
+          {
+            isInterviewer: true,
+            user: { isActive: true },
+          },
+        ],
       },
       select: {
         id: true,

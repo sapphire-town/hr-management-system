@@ -20,6 +20,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  CheckCircle,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/store/auth-store';
 import { settingsAPI, attendanceAPI } from '@/lib/api-client';
+import { useToast } from '@/hooks/use-toast';
 
 interface LeavePolicies {
   sickLeavePerYear: number;
@@ -77,8 +79,10 @@ const DAYS_OF_WEEK = [
 
 export default function SettingsPage() {
   const { user } = useAuthStore();
+  const { toast } = useToast();
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [saveSuccess, setSaveSuccess] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<'company' | 'leave' | 'holidays' | 'notifications' | 'payslip'>('company');
 
   // Holiday management state
@@ -123,6 +127,11 @@ export default function SettingsPage() {
   const [logoFile, setLogoFile] = React.useState<File | null>(null);
   const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
+
+  const showSaveSuccess = () => {
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
 
   const isDirector = user?.role === 'DIRECTOR';
   const isHRHead = user?.role === 'HR_HEAD';
@@ -182,9 +191,18 @@ export default function SettingsPage() {
         workingHoursEnd,
         workingDays,
       });
-      alert('Company settings saved successfully!');
+      toast({
+        title: 'Settings saved',
+        description: 'Company settings have been updated successfully.',
+        variant: 'success',
+      });
+      showSaveSuccess();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save settings');
+      toast({
+        title: 'Save failed',
+        description: error.response?.data?.message || 'Failed to save company settings. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -194,9 +212,18 @@ export default function SettingsPage() {
     try {
       setSaving(true);
       await settingsAPI.updateLeavePolicies(leavePolicies);
-      alert('Leave policies saved successfully!');
+      toast({
+        title: 'Settings saved',
+        description: 'Leave policies have been updated successfully.',
+        variant: 'success',
+      });
+      showSaveSuccess();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save leave policies');
+      toast({
+        title: 'Save failed',
+        description: error.response?.data?.message || 'Failed to save leave policies. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -206,9 +233,18 @@ export default function SettingsPage() {
     try {
       setSaving(true);
       await settingsAPI.updateNotifications(notificationPrefs);
-      alert('Notification settings saved successfully!');
+      toast({
+        title: 'Settings saved',
+        description: 'Notification preferences have been updated successfully.',
+        variant: 'success',
+      });
+      showSaveSuccess();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save notification settings');
+      toast({
+        title: 'Save failed',
+        description: error.response?.data?.message || 'Failed to save notification settings. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -218,7 +254,11 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      alert('Logo file must be less than 2MB');
+      toast({
+        title: 'File too large',
+        description: 'Logo file must be less than 2MB.',
+        variant: 'destructive',
+      });
       return;
     }
     setLogoFile(file);
@@ -243,9 +283,18 @@ export default function SettingsPage() {
         setLogoFile(null);
       }
       await settingsAPI.updatePayslipTemplate(payslipTemplate);
-      alert('Payslip template saved successfully!');
+      toast({
+        title: 'Settings saved',
+        description: 'Payslip template has been updated successfully.',
+        variant: 'success',
+      });
+      showSaveSuccess();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save payslip template');
+      toast({
+        title: 'Save failed',
+        description: error.response?.data?.message || 'Failed to save payslip template. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -290,8 +339,17 @@ export default function SettingsPage() {
       setEditingHoliday(null);
       setHolidayForm({ date: '', name: '', description: '' });
       fetchHolidays();
+      toast({
+        title: editingHoliday ? 'Holiday updated' : 'Holiday added',
+        description: `Holiday has been ${editingHoliday ? 'updated' : 'added'} successfully.`,
+        variant: 'success',
+      });
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to save holiday');
+      toast({
+        title: 'Save failed',
+        description: error.response?.data?.message || 'Failed to save holiday. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -302,8 +360,17 @@ export default function SettingsPage() {
     try {
       await attendanceAPI.deleteHoliday(id);
       fetchHolidays();
+      toast({
+        title: 'Holiday deleted',
+        description: 'Holiday has been removed successfully.',
+        variant: 'success',
+      });
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete holiday');
+      toast({
+        title: 'Delete failed',
+        description: error.response?.data?.message || 'Failed to delete holiday. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -594,8 +661,8 @@ export default function SettingsPage() {
                     color: '#fff',
                   }}
                 >
-                  <Save style={{ width: 16, height: 16, marginRight: 8 }} />
-                  {saving ? 'Saving...' : 'Save Company Settings'}
+                  {saveSuccess ? <CheckCircle style={{ width: 16, height: 16, marginRight: 8 }} /> : <Save style={{ width: 16, height: 16, marginRight: 8 }} />}
+                  {saving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Company Settings'}
                 </Button>
               </div>
             </div>
@@ -736,8 +803,8 @@ export default function SettingsPage() {
                     color: '#fff',
                   }}
                 >
-                  <Save style={{ width: 16, height: 16, marginRight: 8 }} />
-                  {saving ? 'Saving...' : 'Save Leave Policies'}
+                  {saveSuccess ? <CheckCircle style={{ width: 16, height: 16, marginRight: 8 }} /> : <Save style={{ width: 16, height: 16, marginRight: 8 }} />}
+                  {saving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Leave Policies'}
                 </Button>
               </div>
             </div>
@@ -1027,8 +1094,8 @@ export default function SettingsPage() {
                       color: '#fff',
                     }}
                   >
-                    <Save style={{ width: 16, height: 16, marginRight: 8 }} />
-                    {saving ? 'Saving...' : editingHoliday ? 'Update Holiday' : 'Add Holiday'}
+                    {saveSuccess ? <CheckCircle style={{ width: 16, height: 16, marginRight: 8 }} /> : <Save style={{ width: 16, height: 16, marginRight: 8 }} />}
+                    {saving ? 'Saving...' : saveSuccess ? 'Saved!' : editingHoliday ? 'Update Holiday' : 'Add Holiday'}
                   </Button>
                 </div>
               </div>
@@ -1148,8 +1215,8 @@ export default function SettingsPage() {
                     color: '#fff',
                   }}
                 >
-                  <Save style={{ width: 16, height: 16, marginRight: 8 }} />
-                  {saving ? 'Saving...' : 'Save Notification Settings'}
+                  {saveSuccess ? <CheckCircle style={{ width: 16, height: 16, marginRight: 8 }} /> : <Save style={{ width: 16, height: 16, marginRight: 8 }} />}
+                  {saving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Notification Settings'}
                 </Button>
               </div>
             </div>
@@ -1400,8 +1467,8 @@ export default function SettingsPage() {
                       color: '#fff',
                     }}
                   >
-                    <Save style={{ width: 16, height: 16, marginRight: 8 }} />
-                    {saving ? 'Saving...' : 'Save Payslip Template'}
+                    {saveSuccess ? <CheckCircle style={{ width: 16, height: 16, marginRight: 8 }} /> : <Save style={{ width: 16, height: 16, marginRight: 8 }} />}
+                    {saving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Payslip Template'}
                   </Button>
                 </div>
               </div>

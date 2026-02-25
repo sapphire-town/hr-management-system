@@ -13,10 +13,12 @@ import {
   Loader2,
   Target,
   X,
+  Download,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
 import { performanceAPI } from '@/lib/api-client';
+import { exportToPDF, exportToExcel } from '@/lib/export-utils';
 import { LineChart } from '@/components/charts/line-chart';
 
 // ==================== Types ====================
@@ -200,6 +202,54 @@ export default function PerformancePage() {
     emp.department.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleExportPDF = async () => {
+    if (filteredEmployees.length === 0) return;
+    try {
+      await exportToPDF({
+        filename: `performance_analytics_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
+        title: `Performance Analytics - ${selectedMonth}`,
+        columns: [
+          { key: 'employeeName', header: 'Employee', width: 20 },
+          { key: 'department', header: 'Department', width: 15 },
+          { key: 'overallScore', header: 'Overall Score', width: 12 },
+          { key: 'attendanceScore', header: 'Attendance', width: 12 },
+          { key: 'leaveScore', header: 'Leave Score', width: 12 },
+          { key: 'taskCompletionScore', header: 'Task Completion', width: 14 },
+          { key: 'trend', header: 'Trend', width: 8 },
+        ],
+        data: filteredEmployees,
+      });
+    } catch (error) {
+      console.error('Export PDF error:', error);
+      alert('Failed to export PDF');
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (filteredEmployees.length === 0) return;
+    try {
+      await exportToExcel({
+        filename: `performance_analytics_${selectedMonth}_${new Date().toISOString().split('T')[0]}`,
+        title: `Performance Analytics - ${selectedMonth}`,
+        columns: [
+          { key: 'employeeName', header: 'Employee', width: 20 },
+          { key: 'department', header: 'Department', width: 15 },
+          { key: 'overallScore', header: 'Overall Score', width: 12 },
+          { key: 'attendanceScore', header: 'Attendance', width: 12 },
+          { key: 'leaveScore', header: 'Leave Score', width: 12 },
+          { key: 'taskCompletionScore', header: 'Task Completion', width: 14 },
+          { key: 'daysPresent', header: 'Days Present', width: 12 },
+          { key: 'daysAbsent', header: 'Days Absent', width: 12 },
+          { key: 'trend', header: 'Trend', width: 8 },
+        ],
+        data: filteredEmployees,
+      });
+    } catch (error) {
+      console.error('Export Excel error:', error);
+      alert('Failed to export Excel');
+    }
+  };
+
   // Calculate summary stats
   const avgScore = employees.length > 0
     ? Math.round(employees.reduce((sum, e) => sum + e.overallScore, 0) / employees.length)
@@ -339,6 +389,48 @@ export default function PerformancePage() {
                     outline: 'none',
                   }}
                 />
+                {filteredEmployees.length > 0 && (
+                  <>
+                    <button
+                      onClick={handleExportExcel}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        border: '1px solid #e5e7eb',
+                        backgroundColor: '#ffffff',
+                        color: '#374151',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Download style={{ width: '14px', height: '14px' }} />
+                      Excel
+                    </button>
+                    <button
+                      onClick={handleExportPDF}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        border: '1px solid #e5e7eb',
+                        backgroundColor: '#ffffff',
+                        color: '#374151',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Download style={{ width: '14px', height: '14px' }} />
+                      PDF
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 

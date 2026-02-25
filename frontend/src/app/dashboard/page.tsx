@@ -7,7 +7,6 @@ import {
   HRDashboard,
   ManagerDashboard,
   EmployeeDashboard,
-  InterviewerDashboard,
 } from '@/components/dashboards';
 import { ROLE_LABELS } from '@/lib/constants';
 
@@ -39,7 +38,7 @@ export default function DashboardPage() {
       case 'INTERN':
         return <EmployeeDashboard />;
       case 'INTERVIEWER':
-        return <InterviewerDashboard />;
+        return <EmployeeDashboard />;
       default:
         return <EmployeeDashboard />;
     }

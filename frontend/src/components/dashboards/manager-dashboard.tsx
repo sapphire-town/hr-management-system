@@ -167,6 +167,29 @@ export function ManagerDashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Warning if employee record is missing */}
+      {!user?.employee && (
+        <div style={{
+          padding: '16px 20px',
+          borderRadius: 12,
+          backgroundColor: '#fef3c7',
+          border: '1px solid #fbbf24',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        }}>
+          <AlertCircle style={{ width: 20, height: 20, color: '#d97706', flexShrink: 0 }} />
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#92400e', margin: 0 }}>
+              Account Setup Incomplete
+            </p>
+            <p style={{ fontSize: 13, color: '#a16207', margin: '4px 0 0 0' }}>
+              Your user account is not linked to an employee profile. Team management features (leave approvals, team attendance, reports) may not work correctly. Please contact your HR administrator to link your employee profile.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
         {[
@@ -377,7 +400,7 @@ export function ManagerDashboard() {
           {[
             { label: 'My Team', href: '/dashboard/managers', icon: Users, color: '#7c3aed', bg: '#f5f3ff' },
             { label: 'Approve Leaves', href: '/dashboard/leaves/approvals', icon: Calendar, color: '#16a34a', bg: '#dcfce7' },
-            { label: 'Review Reports', href: '/dashboard/reports/daily', icon: FileText, color: '#2563eb', bg: '#dbeafe' },
+            { label: 'Verify Reports', href: '/dashboard/reports/verify', icon: FileText, color: '#2563eb', bg: '#dbeafe' },
             { label: 'Team Performance', href: '/dashboard/performance', icon: TrendingUp, color: '#d97706', bg: '#fef3c7' },
           ].map((action) => (
             <button

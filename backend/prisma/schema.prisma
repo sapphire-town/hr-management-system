@@ -78,6 +78,9 @@ enum AssetStatus {
   ALLOCATED
   ACKNOWLEDGED
   REJECTED
+  RETURN_REQUESTED
+  MANAGER_RETURN_APPROVED
+  RETURNED
 }
 
 enum ReimbursementStatus {
@@ -220,6 +223,9 @@ model Employee {
 
   // Earned leave accrual tracker (consecutive working days without absence)
   consecutiveWorkingDays Int  @default(0)
+
+  // Interviewer add-on capability (any role can be designated as interviewer)
+  isInterviewer     Boolean  @default(false)
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -566,6 +572,10 @@ model AssetRequest {
   assetSerialNo   String?
   acknowledgedAt  DateTime?
   rejectionReason String?
+  returnReason    String?
+  returnCondition String?
+  managerReturnApproved Boolean @default(false)
+  returnedAt      DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 

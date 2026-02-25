@@ -55,6 +55,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
         { label: "Director's List", href: '/dashboard/directors-list', icon: Award },
         { label: 'Rewards & Badges', href: '/dashboard/rewards', icon: Trophy },
         { label: 'Reports', href: '/dashboard/reports', icon: FileText },
+        { label: 'Verify Daily Reports', href: '/dashboard/reports/verify', icon: ClipboardCheck },
         { label: 'Hiring Requests', href: '/dashboard/hiring', icon: UserPlus },
         { label: 'Resignations', href: '/dashboard/resignation/manage', icon: UserMinus },
         { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
@@ -109,6 +110,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
         { label: 'Payroll', href: '/dashboard/payroll', icon: DollarSign },
         { label: 'Rewards & Badges', href: '/dashboard/rewards', icon: Trophy },
         { label: 'Daily Reporting Config', href: '/dashboard/daily-reporting/config', icon: ClipboardList },
+        { label: 'Verify Daily Reports', href: '/dashboard/reports/verify', icon: ClipboardCheck },
         { label: 'Tickets', href: '/dashboard/tickets', icon: Ticket },
         { label: 'Feedback', href: '/dashboard/feedback', icon: MessageSquare },
       ],
@@ -170,6 +172,7 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       title: 'Approvals',
       items: [
         { label: 'Leave Approvals', href: '/dashboard/leaves/approvals', icon: Calendar },
+        { label: 'Verify Daily Reports', href: '/dashboard/reports/verify', icon: ClipboardCheck },
         { label: 'Hiring Requests', href: '/dashboard/hiring', icon: UserPlus },
         { label: 'Resignations', href: '/dashboard/resignation/manage', icon: UserMinus },
       ],
@@ -277,16 +280,11 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       ],
     },
   ],
+  // INTERVIEWER role is currently blocked — users with this role get the EMPLOYEE nav
   INTERVIEWER: [
     {
       items: [
         { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      ],
-    },
-    {
-      title: 'Interviews',
-      items: [
-        { label: 'My Drives', href: '/dashboard/my-drives', icon: Building2 },
       ],
     },
     {
@@ -322,6 +320,14 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
         { label: 'Resignation', href: '/dashboard/resignation', icon: UserMinus },
       ],
     },
+  ],
+};
+
+// Add-on interviewer nav section for non-INTERVIEWER role users who have isInterviewer flag
+export const INTERVIEWER_ADDON_SECTION = {
+  title: 'Interviews',
+  items: [
+    { label: 'My Drives', href: '/dashboard/my-drives', icon: Building2 },
   ],
 };
 

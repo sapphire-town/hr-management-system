@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/store/auth-store';
 import { ROLE_LABELS } from '@/lib/constants';
 import { employeeAPI } from '@/lib/api-client';
+import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
 interface ProfileData {
@@ -52,9 +53,11 @@ interface ProfileData {
 
 export default function ProfilePage() {
   const { user } = useAuthStore();
+  const { toast } = useToast();
   const [profile, setProfile] = React.useState<ProfileData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [formErrors, setFormErrors] = React.useState<Record<string, string>>({});
 
   const [editPersonalOpen, setEditPersonalOpen] = React.useState(false);
   const [editEmergencyOpen, setEditEmergencyOpen] = React.useState(false);
@@ -133,40 +136,103 @@ export default function ProfilePage() {
     }
   }, [profile]);
 
+  const validatePhone = (phone: string): string | null => {
+    if (!phone) return null; // optional
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 13) return 'Phone number must be 10-13 digits';
+    return null;
+  };
+
+  const validateEmail = (email: string): string | null => {
+    if (!email) return null; // optional
+    const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+    if (!emailRegex.test(email)) return 'Enter a valid email address';
+    return null;
+  };
+
+  const validateBankAccount = (account: string): string | null => {
+    if (!account) return null;
+    if (!/^\d+$/.test(account)) return 'Account number must contain only digits';
+    if (account.length < 9 || account.length > 18) return 'Account number must be 9-18 digits';
+    return null;
+  };
+
+  const validateIfsc = (ifsc: string): string | null => {
+    if (!ifsc) return null;
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(ifsc)) return 'IFSC format: 4 letters + 0 + 6 alphanumeric (e.g., SBIN0001234)';
+    return null;
+  };
+
   const handleSavePersonal = async () => {
+    const errors: Record<string, string> = {};
+    const phoneErr = validatePhone(personalForm.phone);
+    if (phoneErr) errors.phone = phoneErr;
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+    setFormErrors({});
     try {
       setSaving(true);
       const response = await employeeAPI.updateMe(personalForm);
       setProfile(response.data);
       setEditPersonalOpen(false);
+      toast({ title: 'Profile updated', description: 'Personal information saved successfully.', variant: 'success' });
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update profile');
+      toast({ title: 'Update failed', description: err.response?.data?.message || 'Failed to update profile.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleSaveEmergency = async () => {
+    const errors: Record<string, string> = {};
+    const phoneErr = validatePhone(emergencyForm.emergencyContactPhone);
+    if (phoneErr) errors.emergencyContactPhone = phoneErr;
+    const emailErr = validateEmail(emergencyForm.emergencyContactEmail);
+    if (emailErr) errors.emergencyContactEmail = emailErr;
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+    setFormErrors({});
     try {
       setSaving(true);
-      const response = await employeeAPI.updateMe(emergencyForm);
+      // Send empty email as undefined so backend @IsOptional skips validation
+      const payload = {
+        ...emergencyForm,
+        emergencyContactEmail: emergencyForm.emergencyContactEmail?.trim() || undefined,
+      };
+      const response = await employeeAPI.updateMe(payload);
       setProfile(response.data);
       setEditEmergencyOpen(false);
+      toast({ title: 'Contact updated', description: 'Emergency contact saved successfully.', variant: 'success' });
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update emergency contact');
+      toast({ title: 'Update failed', description: err.response?.data?.message || 'Failed to update emergency contact.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleSaveBank = async () => {
+    const errors: Record<string, string> = {};
+    const accountErr = validateBankAccount(bankForm.bankAccountNumber);
+    if (accountErr) errors.bankAccountNumber = accountErr;
+    const ifscErr = validateIfsc(bankForm.bankIfsc);
+    if (ifscErr) errors.bankIfsc = ifscErr;
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+    setFormErrors({});
     try {
       setSaving(true);
       const response = await employeeAPI.updateMe(bankForm);
       setProfile(response.data);
       setEditBankOpen(false);
+      toast({ title: 'Bank details updated', description: 'Bank information saved successfully.', variant: 'success' });
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to update bank details');
+      toast({ title: 'Update failed', description: err.response?.data?.message || 'Failed to update bank details.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -185,12 +251,17 @@ export default function ProfilePage() {
       return;
     }
 
+    if (passwordForm.newPassword === passwordForm.currentPassword) {
+      setPasswordError('New password must be different from current password');
+      return;
+    }
+
     try {
       setSaving(true);
       await employeeAPI.changePassword(passwordForm.currentPassword, passwordForm.newPassword);
       setChangePasswordOpen(false);
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      alert('Password changed successfully');
+      toast({ title: 'Password changed', description: 'Your password has been updated successfully.', variant: 'success' });
     } catch (err: any) {
       setPasswordError(err.response?.data?.message || 'Failed to change password');
     } finally {
@@ -376,7 +447,7 @@ export default function ProfilePage() {
       {/* Edit Personal Info Modal */}
       <Modal
         isOpen={editPersonalOpen}
-        onClose={() => setEditPersonalOpen(false)}
+        onClose={() => { setEditPersonalOpen(false); setFormErrors({}); }}
         title="Edit Personal Information"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -384,10 +455,17 @@ export default function ProfilePage() {
             <Label htmlFor="phone">Phone Number</Label>
             <Input
               id="phone"
+              type="tel"
               value={personalForm.phone}
-              onChange={(e) => setPersonalForm({ ...personalForm, phone: e.target.value })}
-              placeholder="Enter phone number"
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9+\-\s]/g, '');
+                setPersonalForm({ ...personalForm, phone: val });
+                if (formErrors.phone) setFormErrors({ ...formErrors, phone: '' });
+              }}
+              placeholder="e.g., 9876543210"
+              maxLength={13}
             />
+            {formErrors.phone && <p style={{ color: '#dc2626', fontSize: 12, margin: '4px 0 0' }}>{formErrors.phone}</p>}
           </div>
           <div>
             <Label htmlFor="address">Address</Label>
@@ -430,7 +508,7 @@ export default function ProfilePage() {
             </select>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '16px' }}>
-            <Button variant="outline" onClick={() => setEditPersonalOpen(false)}>
+            <Button variant="outline" onClick={() => { setEditPersonalOpen(false); setFormErrors({}); }}>
               Cancel
             </Button>
             <Button onClick={handleSavePersonal} disabled={saving}>
@@ -443,7 +521,7 @@ export default function ProfilePage() {
       {/* Edit Emergency Contact Modal */}
       <Modal
         isOpen={editEmergencyOpen}
-        onClose={() => setEditEmergencyOpen(false)}
+        onClose={() => { setEditEmergencyOpen(false); setFormErrors({}); }}
         title="Edit Emergency Contact"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -469,23 +547,33 @@ export default function ProfilePage() {
             <Label htmlFor="emergencyPhone">Phone Number</Label>
             <Input
               id="emergencyPhone"
+              type="tel"
               value={emergencyForm.emergencyContactPhone}
-              onChange={(e) => setEmergencyForm({ ...emergencyForm, emergencyContactPhone: e.target.value })}
-              placeholder="Enter phone number"
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9+\-\s]/g, '');
+                setEmergencyForm({ ...emergencyForm, emergencyContactPhone: val });
+                if (formErrors.emergencyContactPhone) setFormErrors({ ...formErrors, emergencyContactPhone: '' });
+              }}
+              placeholder="e.g., 9876543210"
+              maxLength={13}
             />
+            {formErrors.emergencyContactPhone && <p style={{ color: '#dc2626', fontSize: 12, margin: '4px 0 0' }}>{formErrors.emergencyContactPhone}</p>}
           </div>
           <div>
             <Label htmlFor="emergencyEmail">Email (Optional)</Label>
             <Input
               id="emergencyEmail"
-              type="email"
               value={emergencyForm.emergencyContactEmail}
-              onChange={(e) => setEmergencyForm({ ...emergencyForm, emergencyContactEmail: e.target.value })}
-              placeholder="Enter email address"
+              onChange={(e) => {
+                setEmergencyForm({ ...emergencyForm, emergencyContactEmail: e.target.value });
+                if (formErrors.emergencyContactEmail) setFormErrors({ ...formErrors, emergencyContactEmail: '' });
+              }}
+              placeholder="Enter email address (optional)"
             />
+            {formErrors.emergencyContactEmail && <p style={{ color: '#dc2626', fontSize: 12, margin: '4px 0 0' }}>{formErrors.emergencyContactEmail}</p>}
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '16px' }}>
-            <Button variant="outline" onClick={() => setEditEmergencyOpen(false)}>
+            <Button variant="outline" onClick={() => { setEditEmergencyOpen(false); setFormErrors({}); }}>
               Cancel
             </Button>
             <Button onClick={handleSaveEmergency} disabled={saving}>
@@ -498,7 +586,7 @@ export default function ProfilePage() {
       {/* Edit Bank Details Modal */}
       <Modal
         isOpen={editBankOpen}
-        onClose={() => setEditBankOpen(false)}
+        onClose={() => { setEditBankOpen(false); setFormErrors({}); }}
         title="Edit Bank Details"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -515,10 +603,17 @@ export default function ProfilePage() {
             <Label htmlFor="bankAccount">Account Number</Label>
             <Input
               id="bankAccount"
+              inputMode="numeric"
               value={bankForm.bankAccountNumber}
-              onChange={(e) => setBankForm({ ...bankForm, bankAccountNumber: e.target.value })}
-              placeholder="Enter account number"
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, '');
+                setBankForm({ ...bankForm, bankAccountNumber: val });
+                if (formErrors.bankAccountNumber) setFormErrors({ ...formErrors, bankAccountNumber: '' });
+              }}
+              placeholder="Enter account number (digits only)"
+              maxLength={18}
             />
+            {formErrors.bankAccountNumber && <p style={{ color: '#dc2626', fontSize: 12, margin: '4px 0 0' }}>{formErrors.bankAccountNumber}</p>}
           </div>
           <div>
             <Label htmlFor="bankName">Bank Name</Label>
@@ -534,9 +629,15 @@ export default function ProfilePage() {
             <Input
               id="bankIfsc"
               value={bankForm.bankIfsc}
-              onChange={(e) => setBankForm({ ...bankForm, bankIfsc: e.target.value })}
-              placeholder="Enter IFSC code"
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                setBankForm({ ...bankForm, bankIfsc: val });
+                if (formErrors.bankIfsc) setFormErrors({ ...formErrors, bankIfsc: '' });
+              }}
+              placeholder="e.g., SBIN0001234"
+              maxLength={11}
             />
+            {formErrors.bankIfsc && <p style={{ color: '#dc2626', fontSize: 12, margin: '4px 0 0' }}>{formErrors.bankIfsc}</p>}
           </div>
           <div>
             <Label htmlFor="bankBranch">Branch</Label>
@@ -548,7 +649,7 @@ export default function ProfilePage() {
             />
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '16px' }}>
-            <Button variant="outline" onClick={() => setEditBankOpen(false)}>
+            <Button variant="outline" onClick={() => { setEditBankOpen(false); setFormErrors({}); }}>
               Cancel
             </Button>
             <Button onClick={handleSaveBank} disabled={saving}>

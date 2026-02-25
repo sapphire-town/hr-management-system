@@ -1,7 +1,3 @@
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-
 declare module 'jspdf' {
   interface jsPDF {
     autoTable: (options: any) => jsPDF;
@@ -21,13 +17,14 @@ interface ExportOptions {
   data: any[];
 }
 
-export function exportToExcel({ filename, title, columns, data }: ExportOptions): void {
+export async function exportToExcel({ filename, title, columns, data }: ExportOptions): Promise<void> {
+  const XLSX = await import('xlsx');
+
   // Prepare data with headers
   const headers = columns.map((col) => col.header);
   const rows = data.map((row) =>
     columns.map((col) => {
       const value = row[col.key];
-      // Handle nested objects and dates
       if (value instanceof Date) {
         return value.toLocaleDateString();
       }
@@ -40,11 +37,9 @@ export function exportToExcel({ filename, title, columns, data }: ExportOptions)
 
   const worksheetData = [headers, ...rows];
 
-  // Create workbook and worksheet
   const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
   const workbook = XLSX.utils.book_new();
 
-  // Set column widths
   const colWidths = columns.map((col) => ({
     wch: col.width || Math.max(col.header.length, 15),
   }));
@@ -52,20 +47,20 @@ export function exportToExcel({ filename, title, columns, data }: ExportOptions)
 
   XLSX.utils.book_append_sheet(workbook, worksheet, title || 'Sheet1');
 
-  // Generate and download
   XLSX.writeFile(workbook, `${filename}.xlsx`);
 }
 
-export function exportToPDF({ filename, title, columns, data }: ExportOptions): void {
+export async function exportToPDF({ filename, title, columns, data }: ExportOptions): Promise<void> {
+  const { default: jsPDF } = await import('jspdf');
+  await import('jspdf-autotable');
+
   const doc = new jsPDF();
 
-  // Add title
   if (title) {
     doc.setFontSize(16);
     doc.text(title, 14, 22);
   }
 
-  // Prepare table data
   const headers = columns.map((col) => col.header);
   const rows = data.map((row) =>
     columns.map((col) => {
@@ -80,7 +75,6 @@ export function exportToPDF({ filename, title, columns, data }: ExportOptions): 
     })
   );
 
-  // Add table
   doc.autoTable({
     head: [headers],
     body: rows,
@@ -99,7 +93,6 @@ export function exportToPDF({ filename, title, columns, data }: ExportOptions): 
     },
   });
 
-  // Add footer with date
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -112,13 +105,12 @@ export function exportToPDF({ filename, title, columns, data }: ExportOptions): 
     );
   }
 
-  // Download
   doc.save(`${filename}.pdf`);
 }
 
 // Convenience functions for common exports
-export function exportEmployeesToExcel(employees: any[]): void {
-  exportToExcel({
+export async function exportEmployeesToExcel(employees: any[]): Promise<void> {
+  await exportToExcel({
     filename: `employees_${new Date().toISOString().split('T')[0]}`,
     title: 'Employee List',
     columns: [
@@ -142,8 +134,8 @@ export function exportEmployeesToExcel(employees: any[]): void {
   });
 }
 
-export function exportAttendanceToExcel(records: any[]): void {
-  exportToExcel({
+export async function exportAttendanceToExcel(records: any[]): Promise<void> {
+  await exportToExcel({
     filename: `attendance_${new Date().toISOString().split('T')[0]}`,
     title: 'Attendance Report',
     columns: [
@@ -163,7 +155,7 @@ export function exportAttendanceToExcel(records: any[]): void {
   });
 }
 
-export function exportDailyReportPerformanceToPDF(
+export async function exportDailyReportPerformanceToPDF(
   performance: {
     employeeName: string;
     roleName: string;
@@ -184,7 +176,10 @@ export function exportDailyReportPerformanceToPDF(
     worstParameter: { label: string; pct: number } | null;
   },
   periodLabel: string,
-): void {
+): Promise<void> {
+  const { default: jsPDF } = await import('jspdf');
+  await import('jspdf-autotable');
+
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -298,7 +293,7 @@ function lightenRgb(rgb: [number, number, number], factor: number): [number, num
   ];
 }
 
-export function exportPayslipToPDF(
+export async function exportPayslipToPDF(
   payslip: {
     month: string;
     baseSalary: number;
@@ -321,7 +316,10 @@ export function exportPayslipToPDF(
   },
   leaveBalance?: { sick: number; casual: number; earned: number; total: number } | null,
   templateConfig?: PayslipTemplateConfig | null,
-): void {
+): Promise<void> {
+  const { default: jsPDF } = await import('jspdf');
+  await import('jspdf-autotable');
+
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const employeeName = `${payslip.employee.firstName} ${payslip.employee.lastName}`;
@@ -482,7 +480,6 @@ export function exportPayslipToPDF(
     doc.setTextColor(55, 65, 81);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    // Line for signature
     doc.setDrawColor(180, 180, 180);
     doc.line(pageWidth - 90, y, pageWidth - 14, y);
     y += 6;
@@ -517,8 +514,8 @@ export function exportPayslipToPDF(
   doc.save(`payslip_${employeeName.replace(/\s+/g, '_')}_${payslip.month}.pdf`);
 }
 
-export function exportLeavesToExcel(leaves: any[]): void {
-  exportToExcel({
+export async function exportLeavesToExcel(leaves: any[]): Promise<void> {
+  await exportToExcel({
     filename: `leaves_${new Date().toISOString().split('T')[0]}`,
     title: 'Leave Requests',
     columns: [

@@ -7,6 +7,7 @@ import { DashboardLayout } from '@/components/layout';
 import { leaveAPI, settingsAPI, attendanceAPI } from '@/lib/api-client';
 
 interface LeaveBalance {
+  isIntern?: boolean;
   sick: number;
   casual: number;
   earned: number;
@@ -80,13 +81,46 @@ export default function ApplyLeavePage() {
     while (current <= end) {
       const dayOfWeek = current.getDay();
       const dateStr = current.toISOString().split('T')[0];
-      // Only count if it's a configured working day AND not a holiday
+      // Count configured working days, but exclude holidays
       if (workingDays.includes(dayOfWeek) && !holidays.includes(dateStr)) {
         count++;
       }
       current.setDate(current.getDate() + 1);
     }
     return count;
+  };
+
+  // Calculate sandwich days: weekly offs and holidays sandwiched between leave working days
+  const calculateSandwichDays = (): { count: number; holidayNames: string[] } => {
+    if (!formData.startDate || !formData.endDate) return { count: 0, holidayNames: [] };
+    const start = new Date(formData.startDate);
+    const end = new Date(formData.endDate);
+    if (end < start) return { count: 0, holidayNames: [] };
+
+    // Collect all dates in the range with their types
+    const allDates: { dateStr: string; isRegularLeaveDay: boolean }[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      const dayOfWeek = current.getDay();
+      const dateStr = current.toISOString().split('T')[0];
+      const isWorking = workingDays.includes(dayOfWeek);
+      const isHoliday = holidays.includes(dateStr);
+      // A regular leave day is a working day that isn't a holiday
+      allDates.push({ dateStr, isRegularLeaveDay: isWorking && !isHoliday });
+      current.setDate(current.getDate() + 1);
+    }
+
+    const sandwiched: string[] = [];
+    for (let i = 0; i < allDates.length; i++) {
+      if (allDates[i].isRegularLeaveDay) continue; // Skip actual leave days
+      // This is a weekly off or holiday — check if sandwiched between leave days
+      const hasLeaveBefore = allDates.slice(0, i).some(d => d.isRegularLeaveDay);
+      const hasLeaveAfter = allDates.slice(i + 1).some(d => d.isRegularLeaveDay);
+      if (hasLeaveBefore && hasLeaveAfter) {
+        sandwiched.push(allDates[i].dateStr);
+      }
+    }
+    return { count: sandwiched.length, holidayNames: sandwiched };
   };
 
   const getAvailableBalance = (leaveType: string): number | null => {
@@ -102,8 +136,10 @@ export default function ApplyLeavePage() {
 
   const selectedLeaveType = defaultLeaveTypes.find((lt) => lt.value === formData.leaveType);
   const requestedDays = calculateDays();
+  const sandwichInfo = calculateSandwichDays();
+  const totalEffectiveDays = requestedDays + sandwichInfo.count;
   const availableBalance = getAvailableBalance(formData.leaveType);
-  const hasInsufficientBalance = formData.leaveType !== '' && formData.leaveType !== 'UNPAID' && availableBalance !== null && requestedDays > availableBalance;
+  const hasInsufficientBalance = formData.leaveType !== '' && formData.leaveType !== 'UNPAID' && availableBalance !== null && totalEffectiveDays > availableBalance;
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -220,7 +256,7 @@ export default function ApplyLeavePage() {
     >
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         {/* Leave Balance Summary */}
-        {balance && (
+        {balance && !balance.isIntern && (
           <div
             style={{
               backgroundColor: '#ffffff',
@@ -292,7 +328,9 @@ export default function ApplyLeavePage() {
                   style={errors.leaveType ? inputErrorStyle : inputStyle}
                 >
                   <option value="">Select leave type</option>
-                  {defaultLeaveTypes.map((type) => {
+                  {defaultLeaveTypes
+                    .filter((type) => !balance?.isIntern || type.value === 'UNPAID')
+                    .map((type) => {
                     const available = getAvailableBalance(type.value);
                     return (
                       <option key={type.value} value={type.value}>
@@ -305,7 +343,7 @@ export default function ApplyLeavePage() {
               </div>
 
               {/* Date Range */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                 <div>
                   <label style={labelStyle}>
                     <Calendar style={{ height: '14px', width: '14px', display: 'inline', marginRight: '6px' }} />
@@ -338,34 +376,64 @@ export default function ApplyLeavePage() {
 
               {/* Days Summary */}
               {requestedDays > 0 && formData.leaveType && (
-                <div
-                  style={{
-                    padding: '16px',
-                    borderRadius: '12px',
-                    backgroundColor: hasInsufficientBalance ? '#fef2f2' : '#f5f3ff',
-                    border: `1px solid ${hasInsufficientBalance ? '#fecaca' : '#e9d5ff'}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                  }}
-                >
-                  {hasInsufficientBalance ? (
-                    <AlertCircle style={{ height: '20px', width: '20px', color: '#ef4444' }} />
-                  ) : (
-                    <Calendar style={{ height: '20px', width: '20px', color: '#7c3aed' }} />
-                  )}
-                  <div>
-                    <p style={{ fontSize: '14px', fontWeight: 500, color: hasInsufficientBalance ? '#991b1b' : '#5b21b6', margin: 0 }}>
-                      {requestedDays} working {requestedDays === 1 ? 'day' : 'days'} requested
-                    </p>
-                    <p style={{ fontSize: '12px', color: hasInsufficientBalance ? '#b91c1c' : '#7c3aed', margin: 0, marginTop: '2px' }}>
-                      {hasInsufficientBalance
-                        ? `Only ${availableBalance} days available`
-                        : availableBalance !== null
-                          ? `${availableBalance - requestedDays} days will remain after approval`
-                          : 'Unpaid leave — no balance deduction'}
-                    </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div
+                    style={{
+                      padding: '16px',
+                      borderRadius: '12px',
+                      backgroundColor: hasInsufficientBalance ? '#fef2f2' : '#f5f3ff',
+                      border: `1px solid ${hasInsufficientBalance ? '#fecaca' : '#e9d5ff'}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    {hasInsufficientBalance ? (
+                      <AlertCircle style={{ height: '20px', width: '20px', color: '#ef4444' }} />
+                    ) : (
+                      <Calendar style={{ height: '20px', width: '20px', color: '#7c3aed' }} />
+                    )}
+                    <div>
+                      <p style={{ fontSize: '14px', fontWeight: 500, color: hasInsufficientBalance ? '#991b1b' : '#5b21b6', margin: 0 }}>
+                        {requestedDays} working {requestedDays === 1 ? 'day' : 'days'} requested
+                      </p>
+                      <p style={{ fontSize: '12px', color: hasInsufficientBalance ? '#b91c1c' : '#7c3aed', margin: 0, marginTop: '2px' }}>
+                        {hasInsufficientBalance
+                          ? `Only ${availableBalance} days available`
+                          : availableBalance !== null
+                            ? `${availableBalance - totalEffectiveDays} days will remain after approval`
+                            : 'Unpaid leave — no balance deduction'}
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Sandwich Policy Warning */}
+                  {sandwichInfo.count > 0 && (
+                    <div
+                      style={{
+                        padding: '14px 16px',
+                        borderRadius: '12px',
+                        backgroundColor: '#fff7ed',
+                        border: '1px solid #fed7aa',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                      }}
+                    >
+                      <AlertCircle style={{ height: '20px', width: '20px', color: '#ea580c', flexShrink: 0, marginTop: '1px' }} />
+                      <div>
+                        <p style={{ fontSize: '14px', fontWeight: 600, color: '#9a3412', margin: 0 }}>
+                          Sandwich Leave Policy Applies
+                        </p>
+                        <p style={{ fontSize: '13px', color: '#c2410c', margin: '4px 0 0 0' }}>
+                          {sandwichInfo.count} non-working day{sandwichInfo.count > 1 ? 's' : ''} ({sandwichInfo.holidayNames.map(d => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })).join(', ')}) fall{sandwichInfo.count === 1 ? 's' : ''} within your leave period and will be counted as leave.
+                        </p>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: '#9a3412', margin: '6px 0 0 0' }}>
+                          Total days to be deducted: {totalEffectiveDays} ({requestedDays} working + {sandwichInfo.count} sandwiched)
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -468,7 +536,7 @@ export default function ApplyLeavePage() {
             <li>Leave requests require manager approval, followed by HR approval</li>
             <li>Sick leave beyond 2 consecutive days may require a medical certificate</li>
             <li>Earned leaves should be applied in advance when possible</li>
-            <li>Holidays and weekends are excluded from leave day calculations</li>
+            <li>Sandwich policy: weekly offs and holidays falling within your leave period are counted as leave days</li>
             <li>Leave balance is deducted only after final approval</li>
           </ul>
         </div>

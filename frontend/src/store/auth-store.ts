@@ -8,6 +8,7 @@ export interface User {
   id: string;
   email: string;
   role: 'DIRECTOR' | 'HR_HEAD' | 'MANAGER' | 'EMPLOYEE' | 'INTERVIEWER' | 'INTERN';
+  isInterviewer?: boolean;
   employee?: {
     id: string;
     firstName: string;
@@ -15,6 +16,7 @@ export interface User {
     roleId: string;
     managerId?: string;
     employeeType?: 'FULL_TIME' | 'INTERN';
+    isInterviewer?: boolean;
     role?: { id: string; name: string };
   };
 }

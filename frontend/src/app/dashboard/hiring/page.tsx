@@ -574,10 +574,7 @@ export default function HiringRequestsPage() {
                           <Users style={{ width: '14px', height: '14px' }} />
                           <span><strong style={{ color: '#111827' }}>{studentCount}</strong> students</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#6b7280' }}>
-                          <UserCheck style={{ width: '14px', height: '14px' }} />
-                          <span><strong style={{ color: '#111827' }}>{drive.interviewers?.length || 0}</strong> interviewers</span>
-                        </div>
+                        {/* Interviewer count hidden — role is currently blocked */}
                       </div>
                     </div>
                   );

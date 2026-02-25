@@ -150,16 +150,12 @@ export class RoleService {
 
     for (const emp of employees) {
       if (!emp.user) continue;
-      try {
-        await this.notificationService.sendNotification({
-          recipientId: emp.user.id,
-          subject: 'Daily Reporting Targets Updated',
-          message: `Your daily reporting targets for the ${roleName} role have been updated. Current parameters: ${paramNames || 'None'}. Please check your daily report page for the latest targets.`,
-          type: 'in-app',
-        });
-      } catch (err) {
-        console.error(`[Role] Failed to notify employee ${emp.id}:`, err);
-      }
+      this.notificationService.sendNotification({
+        recipientId: emp.user.id,
+        subject: 'Daily Reporting Targets Updated',
+        message: `Your daily reporting targets for the ${roleName} role have been updated. Current parameters: ${paramNames || 'None'}. Please check your daily report page for the latest targets.`,
+        type: 'in-app',
+      }).catch(err => console.error(`Role notifyRoleEmployees notification failed for ${emp.id}:`, err));
     }
   }
 

@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -72,6 +73,8 @@ export const employeeAPI = {
   resetPassword: (id: string) => apiClient.post(`/employees/${id}/reset-password`),
   reactivate: (id: string) => apiClient.post(`/employees/${id}/reactivate`),
   delete: (id: string) => apiClient.delete(`/employees/${id}`),
+  toggleInterviewer: (id: string, isInterviewer: boolean) =>
+    apiClient.patch(`/employees/${id}/toggle-interviewer`, { isInterviewer }),
   initializeLeaveBalances: () => apiClient.post('/employees/admin/initialize-leave-balances'),
   // Bulk import
   downloadBulkImportTemplate: () => apiClient.get('/employees/bulk-import/template', { responseType: 'blob' }),
@@ -288,6 +291,14 @@ export const assetAPI = {
     apiClient.patch(`/assets/${id}/hr-reject`, { rejectionReason }),
   allocate: (id: string, assetSerialNo: string) =>
     apiClient.patch(`/assets/${id}/allocate`, { assetSerialNo }),
+
+  // Return/handover endpoints
+  requestReturn: (id: string, data: { returnReason: string; returnCondition: string }) =>
+    apiClient.patch(`/assets/${id}/request-return`, data),
+  getManagerPendingReturns: () => apiClient.get('/assets/returns/manager-pending'),
+  managerApproveReturn: (id: string) => apiClient.patch(`/assets/${id}/manager-approve-return`),
+  getReturnRequests: () => apiClient.get('/assets/returns/pending'),
+  approveReturn: (id: string) => apiClient.patch(`/assets/${id}/approve-return`),
 };
 
 export const reimbursementAPI = {

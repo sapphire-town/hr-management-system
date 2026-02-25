@@ -21,6 +21,7 @@ import {
   RejectAssetRequestDto,
   AllocateAssetDto,
   AssetFilterDto,
+  ReturnAssetDto,
 } from './dto/asset.dto';
 
 @ApiTags('Assets')
@@ -100,6 +101,20 @@ export class AssetController {
     return this.assetService.getPendingRequests(filters, req.user.role);
   }
 
+  @Get('returns/pending')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Get pending asset return requests' })
+  async getReturnRequests() {
+    return this.assetService.getReturnRequests();
+  }
+
+  @Get('returns/manager-pending')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get pending return requests for manager quality check' })
+  async getManagerPendingReturns(@Request() req: any) {
+    return this.assetService.getManagerPendingReturns(req.user.employeeId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get asset request by ID' })
   async getRequestById(@Param('id') id: string) {
@@ -125,5 +140,30 @@ export class AssetController {
   @ApiOperation({ summary: 'Allocate asset to employee' })
   async allocateAsset(@Param('id') id: string, @Body() dto: AllocateAssetDto) {
     return this.assetService.allocateAsset(id, dto);
+  }
+
+  // Asset return/handover endpoints
+  @Patch(':id/request-return')
+  @ApiOperation({ summary: 'Request to return an acknowledged asset' })
+  async requestReturn(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body() dto: ReturnAssetDto,
+  ) {
+    return this.assetService.requestReturn(id, req.user.employeeId, dto);
+  }
+
+  @Patch(':id/manager-approve-return')
+  @Roles(UserRole.MANAGER)
+  @ApiOperation({ summary: 'Manager approve asset return quality' })
+  async managerApproveReturn(@Param('id') id: string, @Request() req: any) {
+    return this.assetService.managerApproveReturn(id, req.user.employeeId);
+  }
+
+  @Patch(':id/approve-return')
+  @Roles(UserRole.HR_HEAD, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'HR final confirmation of asset return' })
+  async approveReturn(@Param('id') id: string) {
+    return this.assetService.approveReturn(id);
   }
 }
