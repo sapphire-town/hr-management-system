@@ -1,6 +1,14 @@
-import { Module } from '@nestjs/common';
+import { Module, Controller, Get } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+
+@Controller()
+class HealthController {
+  @Get('health')
+  check() {
+    return { status: 'ok' };
+  }
+}
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { NotificationModule } from './notification/notification.module';
@@ -26,6 +34,7 @@ import { HiringModule } from './hiring/hiring.module';
 import { RewardModule } from './reward/reward.module';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,

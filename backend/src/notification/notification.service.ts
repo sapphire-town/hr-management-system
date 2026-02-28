@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as nodemailer from 'nodemailer';
+import * as aws from '@aws-sdk/client-ses';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { NotificationType, NotificationChannel } from '@prisma/client';
 import {
@@ -15,20 +16,36 @@ import {
 @Injectable()
 export class NotificationService {
   private transporter: nodemailer.Transporter;
+  private readonly logger = new Logger(NotificationService.name);
 
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
   ) {
-    this.transporter = nodemailer.createTransport({
-      host: this.configService.get('EMAIL_HOST'),
-      port: this.configService.get('EMAIL_PORT'),
-      secure: this.configService.get('EMAIL_SECURE') === 'true',
-      auth: {
-        user: this.configService.get('EMAIL_USER'),
-        pass: this.configService.get('EMAIL_PASSWORD'),
-      },
-    });
+    const emailProvider = this.configService.get('EMAIL_PROVIDER');
+
+    if (emailProvider === 'ses') {
+      // AWS SES transport — uses IAM role credentials on ECS (no keys needed)
+      const ses = new aws.SES({
+        region: this.configService.get('AWS_REGION') || 'ap-south-1',
+      });
+      this.transporter = nodemailer.createTransport({
+        SES: { ses, aws },
+      } as any);
+      this.logger.log('Email transport: AWS SES');
+    } else {
+      // SMTP transport (Gmail, etc.) — for local development
+      this.transporter = nodemailer.createTransport({
+        host: this.configService.get('EMAIL_HOST'),
+        port: this.configService.get('EMAIL_PORT'),
+        secure: this.configService.get('EMAIL_SECURE') === 'true',
+        auth: {
+          user: this.configService.get('EMAIL_USER'),
+          pass: this.configService.get('EMAIL_PASSWORD'),
+        },
+      });
+      this.logger.log('Email transport: SMTP');
+    }
   }
 
   async sendWelcomeEmail(
