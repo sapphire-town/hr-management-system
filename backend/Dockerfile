@@ -60,6 +60,9 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./
 COPY --from=build /app/prisma ./prisma
 
+# Regenerate Prisma client with correct OpenSSL bindings for this stage
+RUN npx prisma generate
+
 ENV NODE_ENV=production
 ENV PORT=3001
 

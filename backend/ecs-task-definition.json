@@ -1,0 +1,50 @@
+{
+  "family": "hr-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::469049066557:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "hr-backend",
+      "image": "469049066557.dkr.ecr.ap-south-1.amazonaws.com/hr-backend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3001,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "3001" },
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "DATABASE_URL", "value": "postgresql://neondb_owner:npg_yt0DUZTKMIz4@ep-mute-firefly-a1qb4w5s-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" },
+        { "name": "JWT_SECRET", "value": "your-super-secret-jwt-key-change-this-in-production" },
+        { "name": "JWT_EXPIRATION", "value": "7d" },
+        { "name": "EMAIL_HOST", "value": "smtp.gmail.com" },
+        { "name": "EMAIL_PORT", "value": "587" },
+        { "name": "EMAIL_SECURE", "value": "false" },
+        { "name": "EMAIL_USER", "value": "techcareerplab@gmail.com" },
+        { "name": "EMAIL_PASSWORD", "value": "kotr oglc ycyl vezf" },
+        { "name": "EMAIL_FROM", "value": "techcareerplab@gmail.com" },
+        { "name": "FRONTEND_URL", "value": "http://localhost:3000" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/hr-backend",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 100
+      }
+    }
+  ]
+}
