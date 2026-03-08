@@ -101,6 +101,7 @@ export default function MyDrivesPage() {
   const { user } = useAuthStore();
   const searchParams = useSearchParams();
   const isHROrDirector = user?.role === 'HR_HEAD' || user?.role === 'DIRECTOR';
+  const isDirector = user?.role === 'DIRECTOR';
   const [drives, setDrives] = React.useState<PlacementDrive[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selectedDrive, setSelectedDrive] = React.useState<PlacementDrive | null>(null);
@@ -196,9 +197,9 @@ export default function MyDrivesPage() {
       setEvaluationData({ round: 1, status: '', comments: '' });
     } else if (round1.status === 'PASS' && !round2) {
       setEvaluationData({ round: 2, status: '', comments: '' });
-    } else if (round2?.status === 'PASS' && !round3 && isHROrDirector) {
+    } else if (round2?.status === 'PASS' && !round3 && isDirector) {
       setEvaluationData({ round: 3, status: '', comments: '' });
-    } else if (round3 && isHROrDirector) {
+    } else if (round3 && isDirector) {
       setEvaluationData({ round: 3, status: round3.status, comments: round3.comments || '' });
     } else if (round1.status === 'PASS' && round2) {
       setEvaluationData({ round: 2, status: round2.status, comments: round2.comments || '' });
@@ -968,11 +969,13 @@ export default function MyDrivesPage() {
                     <>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                       <h5 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#374151' }}>
-                        {isHROrDirector && selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round)
+                        {(((evaluationData.round === 3 && isDirector) || (evaluationData.round !== 3 && isHROrDirector)) &&
+                          selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round))
                           ? `Override Evaluation - Round ${evaluationData.round}`
                           : `Submit Evaluation - Round ${evaluationData.round}`}
                       </h5>
-                      {isHROrDirector && selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round) && (
+                      {(((evaluationData.round === 3 && isDirector) || (evaluationData.round !== 3 && isHROrDirector)) &&
+                        selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round)) && (
                         <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 500 }}>
                           Override
                         </span>
@@ -998,7 +1001,7 @@ export default function MyDrivesPage() {
                     )}
 
 
-                    {isHROrDirector && evaluationData.round >= 2 && (
+                    {((evaluationData.round === 2 && isHROrDirector) || (evaluationData.round === 3 && isDirector)) && (
                       (evaluationData.round === 2 && getStudentRound1Status(selectedStudent)?.status !== 'PASS') ||
                       (evaluationData.round === 3 && getStudentRound2Status(selectedStudent)?.status !== 'PASS')
                     ) && (
@@ -1047,7 +1050,7 @@ export default function MyDrivesPage() {
                         >
                           Round 2
                         </button>
-                        {isHROrDirector && (
+                        {isDirector && (
                           <button
                             onClick={() => setEvaluationData({ ...evaluationData, round: 3 })}
                             style={{
@@ -1152,7 +1155,8 @@ export default function MyDrivesPage() {
                         ) : (
                           <>
                             <Save style={{ width: '16px', height: '16px' }} />
-                            {isHROrDirector && selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round)
+                            {(((evaluationData.round === 3 && isDirector) || (evaluationData.round !== 3 && isHROrDirector)) &&
+                              selectedStudent.evaluations.find(e => e.roundNumber === evaluationData.round))
                               ? 'Override Evaluation'
                               : 'Save Evaluation'}
                           </>

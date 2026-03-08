@@ -490,9 +490,11 @@ export class RecruitmentService {
       throw new BadRequestException('This drive is closed. Only HR/Director can modify closed drives.');
     }
 
-    // Round 3 is restricted to HR/Director only
-    if (roundNumber === 3 && !isPrivileged) {
-      throw new BadRequestException('Round 3 evaluation is restricted to HR/Director only.');
+    const isDirector = userRole === UserRole.DIRECTOR;
+
+    // Round 3 is restricted to Director only
+    if (roundNumber === 3 && !isDirector) {
+      throw new BadRequestException('Round 3 evaluation is restricted to Director only.');
     }
 
     if (!isPrivileged) {
@@ -524,7 +526,7 @@ export class RecruitmentService {
       }
     }
 
-    // For round 3, check if round 2 passed (HR/Director can override)
+    // For round 3, check if round 2 passed (Director can override)
     if (roundNumber === 3 && !isPrivileged) {
       const round2 = await this.prisma.roundEvaluation.findFirst({
         where: {

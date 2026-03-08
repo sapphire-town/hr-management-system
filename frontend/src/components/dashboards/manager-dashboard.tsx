@@ -14,8 +14,9 @@ import {
   ChevronRight,
   Loader2,
 } from 'lucide-react';
-import { employeeAPI, leaveAPI, dailyReportAPI } from '@/lib/api-client';
+import { employeeAPI, leaveAPI, dailyReportAPI, dashboardAPI } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 
 interface TeamMember {
   id: string;
@@ -65,88 +66,109 @@ export function ManagerDashboard() {
     pendingReportCount: 0,
   });
 
-  React.useEffect(() => {
-    const fetchData = async () => {
+  const fetchData = React.useCallback(async () => {
+    try {
+      // Fetch team members with attendance from the combined endpoint
+      let membersWithStatus: TeamMember[] = [];
       try {
-        setLoading(true);
+        const teamAttendanceRes = await employeeAPI.getMyTeamAttendance();
+        const teamAttendanceData = teamAttendanceRes.data || [];
 
-        // Fetch team members with attendance from the combined endpoint
-        let membersWithStatus: TeamMember[] = [];
+        // Backend returns { id, name, status } where name is "FirstName LastName"
+        membersWithStatus = teamAttendanceData.map((member: any) => {
+          const nameParts = (member.name || '').split(' ');
+          return {
+            id: member.id,
+            firstName: nameParts[0] || '',
+            lastName: nameParts.slice(1).join(' ') || '',
+            status: member.status || 'NOT_MARKED',
+          };
+        });
+      } catch (e) {
+        // Fallback to just getting team members without attendance
+        console.log('Trying fallback team endpoint');
         try {
-          const teamAttendanceRes = await employeeAPI.getMyTeamAttendance();
-          const teamAttendanceData = teamAttendanceRes.data || [];
+          const teamRes = await employeeAPI.getMyTeam();
+          const teamData = teamRes.data || [];
+          membersWithStatus = teamData.map((member: any) => ({
+            id: member.id,
+            firstName: member.firstName,
+            lastName: member.lastName,
+            status: 'NOT_MARKED' as const,
+          }));
+        } catch (e2) {
+          console.log('Error fetching team');
+        }
+      }
 
-          // Backend returns { id, name, status } where name is "FirstName LastName"
-          membersWithStatus = teamAttendanceData.map((member: any) => {
-            const nameParts = (member.name || '').split(' ');
-            return {
-              id: member.id,
-              firstName: nameParts[0] || '',
-              lastName: nameParts.slice(1).join(' ') || '',
-              status: member.status || 'NOT_MARKED',
-            };
+      setTeamMembers(membersWithStatus);
+
+      // Calculate stats from list for exact card match
+      const presentCount = membersWithStatus.filter((m: TeamMember) => m.status === 'PRESENT').length;
+      const absentCount = membersWithStatus.filter((m: TeamMember) => m.status === 'ABSENT').length;
+      const leaveCount = membersWithStatus.filter((m: TeamMember) => m.status === 'LEAVE').length;
+
+      // Fetch pending leave requests
+      let pendingLeaveCount = 0;
+      try {
+        const leavesRes = await leaveAPI.getPendingForManager();
+        const pending = leavesRes.data || [];
+        pendingLeaveCount = pending.length;
+        setPendingLeaves(pending.slice(0, 5));
+      } catch (e) {
+        console.log('Error fetching leaves');
+      }
+
+      // Fetch pending reports
+      let pendingReportCount = 0;
+      try {
+        const reportsRes = await dailyReportAPI.getPendingTeamReports();
+        const reports = reportsRes.data || [];
+        pendingReportCount = reports.length;
+        setPendingReports(reports.slice(0, 5));
+      } catch (e) {
+        console.log('Error fetching reports');
+      }
+
+      // Get canonical pending counters from dashboard API for consistency with other views
+      try {
+        const [statsRes, pendingRes] = await Promise.all([
+          dashboardAPI.getStats(),
+          dashboardAPI.getPendingApprovals(),
+        ]);
+        const pendingByType = new Map<string, number>();
+        if (Array.isArray(pendingRes.data)) {
+          pendingRes.data.forEach((item: { type: string; count: number }) => {
+            pendingByType.set(item.type, item.count);
           });
-        } catch (e) {
-          // Fallback to just getting team members without attendance
-          console.log('Trying fallback team endpoint');
-          try {
-            const teamRes = await employeeAPI.getMyTeam();
-            const teamData = teamRes.data || [];
-            membersWithStatus = teamData.map((member: any) => ({
-              id: member.id,
-              firstName: member.firstName,
-              lastName: member.lastName,
-              status: 'NOT_MARKED' as const,
-            }));
-          } catch (e2) {
-            console.log('Error fetching team');
-          }
         }
-
-        setTeamMembers(membersWithStatus);
-
-        // Calculate stats
-        const presentCount = membersWithStatus.filter((m: TeamMember) => m.status === 'PRESENT').length;
-        const absentCount = membersWithStatus.filter((m: TeamMember) => m.status === 'ABSENT').length;
-        const leaveCount = membersWithStatus.filter((m: TeamMember) => m.status === 'LEAVE').length;
-
-        // Fetch pending leave requests
-        try {
-          const leavesRes = await leaveAPI.getPendingForManager();
-          const pending = leavesRes.data || [];
-          setPendingLeaves(pending.slice(0, 5));
-          setStats(prev => ({ ...prev, pendingLeaveCount: pending.length }));
-        } catch (e) {
-          console.log('Error fetching leaves');
-        }
-
-        // Fetch pending reports
-        try {
-          const reportsRes = await dailyReportAPI.getPendingTeamReports();
-          const reports = reportsRes.data || [];
-          setPendingReports(reports.slice(0, 5));
-          setStats(prev => ({ ...prev, pendingReportCount: reports.length }));
-        } catch (e) {
-          console.log('Error fetching reports');
-        }
-
-        setStats(prev => ({
-          ...prev,
+        setStats({
+          teamSize: statsRes.data?.teamSize ?? membersWithStatus.length,
+          presentToday: statsRes.data?.presentToday ?? presentCount,
+          absentToday: absentCount,
+          onLeave: leaveCount,
+          pendingLeaveCount: pendingByType.get('leave') ?? pendingLeaveCount,
+          pendingReportCount: pendingByType.get('report') ?? pendingReportCount,
+        });
+      } catch {
+        setStats({
           teamSize: membersWithStatus.length,
           presentToday: presentCount,
           absentToday: absentCount,
           onLeave: leaveCount,
-        }));
-
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
+          pendingLeaveCount,
+          pendingReportCount,
+        });
       }
-    };
 
-    fetchData();
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useRealtimeRefresh(fetchData, 30000);
 
   const cardStyle: React.CSSProperties = {
     backgroundColor: '#ffffff',

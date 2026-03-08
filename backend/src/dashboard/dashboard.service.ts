@@ -27,6 +27,7 @@ export class DashboardService {
     const [
       totalEmployees,
       activeEmployees,
+      roles,
       departments,
       hiringRequests,
       recentResignations,
@@ -36,6 +37,7 @@ export class DashboardService {
         where: { user: { isActive: true } },
       }),
       this.prisma.role.count({ where: { isActive: true } }),
+      this.getActiveDepartmentCount(),
       this.prisma.hiringRequest.count(),
       this.prisma.resignation.count({
         where: {
@@ -49,6 +51,7 @@ export class DashboardService {
     return {
       totalEmployees,
       activeEmployees,
+      roles,
       departments,
       hiringRequests: hiringRequests || 0,
       resignations: recentResignations,
@@ -57,11 +60,14 @@ export class DashboardService {
   }
 
   private async getHRStats() {
+    const [pendingReimbursements, pendingAssets] = await Promise.all([
+      this.getHrPendingReimbursementCount(),
+      this.getHrPendingAssetCount(),
+    ]);
+
     const [
       pendingLeaves,
       pendingDocuments,
-      pendingReimbursements,
-      pendingAssets,
       activeResignations,
       newEmployeesThisMonth,
     ] = await Promise.all([
@@ -70,12 +76,6 @@ export class DashboardService {
       }),
       this.prisma.documentVerification.count({
         where: { status: { in: ['UPLOADED', 'UNDER_REVIEW'] } },
-      }),
-      this.prisma.reimbursement.count({
-        where: { status: { in: ['SUBMITTED', 'MANAGER_APPROVED', 'PENDING_HR'] } },
-      }),
-      this.prisma.assetRequest.count({
-        where: { status: { in: ['SUBMITTED', 'MANAGER_APPROVED', 'PENDING_HR'] } },
       }),
       this.prisma.resignation.count({
         where: { status: { in: ['SUBMITTED', 'MANAGER_APPROVED'] } },
@@ -150,7 +150,7 @@ export class DashboardService {
         attendanceThisMonth: 0,
         totalWorkingDays: 22,
         pendingRequests: 0,
-        leaveBalance: 0,
+        leaveBalance: { sick: 0, casual: 0, earned: 0, total: 0 },
       };
     }
 
@@ -190,8 +190,13 @@ export class DashboardService {
     ]);
 
     const leaveBalance = employee
-      ? employee.sickLeaveBalance + employee.casualLeaveBalance + employee.earnedLeaveBalance
-      : 0;
+      ? {
+          sick: employee.sickLeaveBalance,
+          casual: employee.casualLeaveBalance,
+          earned: employee.earnedLeaveBalance,
+          total: employee.sickLeaveBalance + employee.casualLeaveBalance + employee.earnedLeaveBalance,
+        }
+      : { sick: 0, casual: 0, earned: 0, total: 0 };
 
     return {
       attendanceThisMonth,
@@ -275,11 +280,16 @@ export class DashboardService {
     const approvals = [];
 
     if (role === UserRole.HR_HEAD) {
+      const [hrReimbursements, hrAssets] = await Promise.all([
+        this.getHrPendingReimbursementCount(),
+        this.getHrPendingAssetCount(),
+      ]);
+
       const [leaves, documents, reimbursements, assets] = await Promise.all([
         this.prisma.leave.count({ where: { status: 'PENDING_HR' } }),
         this.prisma.documentVerification.count({ where: { status: { in: ['UPLOADED', 'UNDER_REVIEW'] } } }),
-        this.prisma.reimbursement.count({ where: { status: { in: ['SUBMITTED', 'MANAGER_APPROVED', 'PENDING_HR'] } } }),
-        this.prisma.assetRequest.count({ where: { status: { in: ['SUBMITTED', 'MANAGER_APPROVED', 'PENDING_HR'] } } }),
+        Promise.resolve(hrReimbursements),
+        Promise.resolve(hrAssets),
       ]);
 
       approvals.push(
@@ -309,6 +319,47 @@ export class DashboardService {
     }
 
     return approvals;
+  }
+
+  private async getActiveDepartmentCount(): Promise<number> {
+    try {
+      const tableExists = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'departments'
+        ) AS "exists"
+      `;
+
+      if (!tableExists?.[0]?.exists) {
+        return this.prisma.role.count({ where: { isActive: true } });
+      }
+
+      const deptCount = await this.prisma.$queryRaw<Array<{ count: bigint | number | string }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM departments
+        WHERE "isActive" = true
+      `;
+      return Number(deptCount?.[0]?.count || 0);
+    } catch {
+      return this.prisma.role.count({ where: { isActive: true } });
+    }
+  }
+
+  private async getHrPendingReimbursementCount(): Promise<number> {
+    return this.prisma.reimbursement.count({
+      where: {
+        status: { in: ['SUBMITTED', 'MANAGER_APPROVED', 'PENDING_HR'] },
+      },
+    });
+  }
+
+  private async getHrPendingAssetCount(): Promise<number> {
+    return this.prisma.assetRequest.count({
+      where: {
+        status: { in: ['SUBMITTED', 'MANAGER_APPROVED', 'PENDING_HR'] },
+      },
+    });
   }
 
   async getChartData(type: string, role: UserRole, employeeId?: string) {

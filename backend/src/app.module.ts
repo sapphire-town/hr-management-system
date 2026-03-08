@@ -13,6 +13,7 @@ import { AssetModule } from './asset/asset.module';
 import { ReimbursementModule } from './reimbursement/reimbursement.module';
 import { ResignationModule } from './resignation/resignation.module';
 import { RoleModule } from './role/role.module';
+import { DepartmentModule } from './department/department.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { RecruitmentModule } from './recruitment/recruitment.module';
 import { PayrollModule } from './payroll/payroll.module';
@@ -37,6 +38,7 @@ import { RewardModule } from './reward/reward.module';
     DashboardModule,
     EmployeeModule,
     RoleModule,
+    DepartmentModule,
     LeaveModule,
     AttendanceModule,
     DocumentModule,

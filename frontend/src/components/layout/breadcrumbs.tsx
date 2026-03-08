@@ -33,6 +33,7 @@ const pathLabels: Record<string, string> = {
   performance: 'Performance',
   settings: 'Settings',
   profile: 'Profile',
+  roles: 'Department Management',
   departments: 'Departments',
   'directors-list': "Director's List",
   hiring: 'Hiring Requests',
