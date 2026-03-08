@@ -27,6 +27,34 @@ export class DocumentService {
     private notificationService: NotificationService,
   ) {}
 
+  private normalizeStoredFilePath(filePath: string): string {
+    const fileName = path.basename(filePath);
+    return path.posix.join('uploads', 'documents', fileName);
+  }
+
+  resolveReadableFilePath(storedFilePath: string): string | null {
+    const candidates = new Set<string>();
+    const normalizedForward = storedFilePath.replace(/\\/g, '/');
+    const normalizedNative = normalizedForward.split('/').join(path.sep);
+    const onlyFileName = path.basename(normalizedForward);
+
+    candidates.add(storedFilePath);
+    candidates.add(normalizedForward);
+    candidates.add(normalizedNative);
+    candidates.add(path.join('uploads', 'documents', onlyFileName));
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const absolutePath = path.isAbsolute(candidate)
+        ? candidate
+        : path.join(process.cwd(), candidate);
+      if (fs.existsSync(absolutePath)) {
+        return absolutePath;
+      }
+    }
+    return null;
+  }
+
   // Employee Documents (released by HR)
   async getMyDocuments(employeeId: string) {
     return this.prisma.document.findMany({
@@ -50,7 +78,7 @@ export class DocumentService {
         employeeId: dto.employeeId,
         documentType: dto.documentType,
         fileName,
-        filePath,
+        filePath: this.normalizeStoredFilePath(filePath),
         description: dto.description,
         releasedBy,
         releasedAt: new Date(),
@@ -101,7 +129,7 @@ export class DocumentService {
             employeeId: employee.id,
             documentType: dto.documentType,
             fileName,
-            filePath,
+            filePath: this.normalizeStoredFilePath(filePath),
             description: dto.description,
             releasedBy,
             releasedAt: now,
@@ -219,7 +247,7 @@ export class DocumentService {
         employeeId,
         documentType: dto.documentType,
         fileName,
-        filePath,
+        filePath: this.normalizeStoredFilePath(filePath),
         status: 'UPLOADED',
       },
     });
@@ -608,7 +636,7 @@ export class DocumentService {
               employeeId: employee.id,
               documentType: template.documentType,
               fileName: `${template.name} - ${employee.firstName} ${employee.lastName}.pdf`,
-              filePath: outputPath,
+              filePath: this.normalizeStoredFilePath(outputPath),
               description: `Auto-generated from template: ${template.name}`,
               releasedBy: generatedBy,
               releasedAt: now,

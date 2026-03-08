@@ -19,7 +19,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
 import { createReadStream, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { diskStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -74,7 +73,11 @@ export class DocumentController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const document = await this.documentService.downloadDocument(id, req.user.employeeId);
-    const file = createReadStream(join(process.cwd(), document.filePath));
+    const filePath = this.documentService.resolveReadableFilePath(document.filePath);
+    if (!filePath) {
+      throw new BadRequestException('File not found on server');
+    }
+    const file = createReadStream(filePath);
     const ext = document.fileName.split('.').pop()?.toLowerCase();
     const contentTypes: Record<string, string> = {
       html: 'text/html',
@@ -193,9 +196,8 @@ export class DocumentController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const document = await this.documentService.getVerificationDocumentForView(id);
-    const filePath = join(process.cwd(), document.filePath);
-
-    if (!existsSync(filePath)) {
+    const filePath = this.documentService.resolveReadableFilePath(document.filePath);
+    if (!filePath) {
       throw new BadRequestException('File not found on server');
     }
 
