@@ -12,6 +12,8 @@ import {
   ChevronUp,
   Filter,
   X,
+  Download,
+  Paperclip,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
@@ -118,6 +120,40 @@ export default function VerifyReportsPage() {
       alert(error.response?.data?.message || 'Failed to verify report');
     } finally {
       setVerifyingId(null);
+    }
+  };
+
+  const handleViewAttachment = async (att: { fileName: string; filePath: string }) => {
+    try {
+      const filename = att.filePath?.split('/').pop() || att.fileName;
+      const response = await dailyReportAPI.downloadAttachment(filename);
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      const blob = new Blob([response.data], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error('Failed to view attachment:', error);
+      alert('Failed to open attachment. The file may no longer exist.');
+    }
+  };
+
+  const handleDownloadAttachment = async (att: { fileName: string; filePath: string }) => {
+    try {
+      const filename = att.filePath?.split('/').pop() || att.fileName;
+      const response = await dailyReportAPI.downloadAttachment(filename);
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      const blob = new Blob([response.data], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = att.fileName || filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download attachment:', error);
+      alert('Failed to download attachment. The file may no longer exist.');
     }
   };
 
@@ -485,26 +521,59 @@ export default function VerifyReportsPage() {
                       {/* Attachments */}
                       {report.attachments && report.attachments.length > 0 && (
                         <div style={{ marginBottom: 20 }}>
-                          <p style={{ margin: '0 0 8px 0', fontSize: 13, fontWeight: 600, color: '#374151' }}>Attachments</p>
+                          <p style={{ margin: '0 0 8px 0', fontSize: 13, fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Paperclip style={{ width: 14, height: 14 }} />
+                            Attachments
+                          </p>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {report.attachments.map((att, i) => (
-                              <a
+                              <div
                                 key={i}
-                                href={dailyReportAPI.getAttachmentUrl(att.filePath?.split('/').pop() || att.fileName)}
-                                target="_blank"
-                                rel="noopener noreferrer"
                                 style={{
-                                  padding: '6px 12px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '8px 14px',
                                   borderRadius: 8,
-                                  border: '1px solid #e5e7eb',
+                                  border: '1px solid #ede9fe',
                                   fontSize: 13,
-                                  color: '#7c3aed',
-                                  textDecoration: 'none',
                                   backgroundColor: '#f5f3ff',
                                 }}
                               >
-                                {att.fileName}
-                              </a>
+                                <FileText style={{ width: 14, height: 14, color: '#7c3aed', flexShrink: 0 }} />
+                                <button
+                                  onClick={() => handleViewAttachment(att)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    color: '#7c3aed',
+                                    fontSize: 13,
+                                    fontWeight: 500,
+                                    textDecoration: 'underline',
+                                    textUnderlineOffset: 2,
+                                  }}
+                                  title="View attachment"
+                                >
+                                  {att.fileName || att.filePath?.split('/').pop() || `Attachment ${i + 1}`}
+                                </button>
+                                <button
+                                  onClick={() => handleDownloadAttachment(att)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: '2px',
+                                    cursor: 'pointer',
+                                    color: '#7c3aed',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                  }}
+                                  title="Download attachment"
+                                >
+                                  <Download style={{ width: 14, height: 14 }} />
+                                </button>
+                              </div>
                             ))}
                           </div>
                         </div>

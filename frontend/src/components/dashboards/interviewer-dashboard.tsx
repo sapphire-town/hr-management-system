@@ -18,6 +18,7 @@ import {
 import { StatsCard, StatsGrid } from '@/components/dashboard/stats-card';
 import { QuickActions } from '@/components/dashboard/quick-actions';
 import { recruitmentAPI } from '@/lib/api-client';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 
 interface PlacementDrive {
   id: string;
@@ -42,19 +43,18 @@ export function InterviewerDashboard() {
   const [drives, setDrives] = React.useState<PlacementDrive[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  React.useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await recruitmentAPI.getMyDrives();
-        setDrives(response.data || []);
-      } catch (error) {
-        console.error('Error fetching drives:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const fetchData = React.useCallback(async () => {
+    try {
+      const response = await recruitmentAPI.getMyDrives();
+      setDrives(response.data || []);
+    } catch (error) {
+      console.error('Error fetching drives:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useRealtimeRefresh(fetchData, 30000);
 
   // Calculate stats
   const totalDrives = drives.length;

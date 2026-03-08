@@ -977,7 +977,7 @@ export default function RolesPage() {
 
   return (
     <DashboardLayout
-      title="Role Management"
+      title="Department Management"
       description="Manage organizational roles and staffing requirements"
       actions={
         canManageRoles ? (

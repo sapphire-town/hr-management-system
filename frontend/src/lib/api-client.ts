@@ -99,6 +99,18 @@ export const roleAPI = {
   delete: (id: string) => apiClient.delete(`/roles/${id}`),
 };
 
+export const departmentAPI = {
+  getAll: () => apiClient.get('/departments'),
+  getById: (id: string) => apiClient.get(`/departments/${id}`),
+  create: (data: { name: string }) => apiClient.post('/departments', data),
+  update: (id: string, data: { name?: string; isActive?: boolean }) =>
+    apiClient.patch(`/departments/${id}`, data),
+  setRequirements: (id: string, minimumRequired: number) =>
+    apiClient.patch(`/departments/${id}/requirements`, { minimumRequired }),
+  getStatistics: () => apiClient.get('/departments/statistics'),
+  delete: (id: string) => apiClient.delete(`/departments/${id}`),
+};
+
 export const leaveAPI = {
   apply: (data: { leaveType: string; startDate: string; endDate: string; reason: string }) =>
     apiClient.post('/leaves', data),
@@ -588,6 +600,10 @@ export const dailyReportAPI = {
   },
   getAttachmentUrl: (filename: string) =>
     `${apiClient.defaults.baseURL}/daily-reports/attachment/${filename}`,
+  downloadAttachment: (filename: string) =>
+    apiClient.get(`/daily-reports/attachment/${filename}`, {
+      responseType: 'blob',
+    }),
 
   // Manager endpoints
   getTeamReports: (params?: { employeeId?: string; startDate?: string; endDate?: string; isVerified?: boolean }) =>

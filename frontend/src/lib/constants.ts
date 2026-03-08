@@ -88,7 +88,8 @@ export const NAVIGATION_CONFIG: Record<string, NavSection[]> = {
       items: [
         { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
         { label: 'Employees', href: '/dashboard/employees', icon: Users },
-        { label: 'Role Management', href: '/dashboard/departments', icon: Building2 },
+        { label: 'Roles', href: '/dashboard/roles', icon: Briefcase },
+        { label: 'Department Management', href: '/dashboard/departments', icon: Building2 },
       ],
     },
     {

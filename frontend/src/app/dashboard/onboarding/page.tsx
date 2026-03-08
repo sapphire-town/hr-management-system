@@ -1117,7 +1117,7 @@ export default function OnboardingPage() {
                 </Select>
               ) : (
                 <div style={{ padding: '8px', background: '#fef3cd', borderRadius: 4, fontSize: 13, color: '#856404' }}>
-                  No roles available. Please create roles first in Role Management.
+                  No roles available. Please create departments/roles first in Department Management.
                 </div>
               )}
             </div>

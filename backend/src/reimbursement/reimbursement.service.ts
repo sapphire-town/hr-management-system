@@ -35,6 +35,9 @@ export class ReimbursementService {
       throw new NotFoundException('Employee not found');
     }
 
+    const hasManager = !!employee.managerId;
+    const initialStatus: ReimbursementStatus = hasManager ? 'SUBMITTED' : 'PENDING_HR';
+
     const claim = await this.prisma.reimbursement.create({
       data: {
         employeeId,
@@ -43,18 +46,33 @@ export class ReimbursementService {
         expenseDate: new Date(dto.expenseDate),
         description: dto.description,
         receiptPath,
-        status: 'SUBMITTED',
+        status: initialStatus,
+        managerApproved: !hasManager,
       },
     });
 
-    // Notify manager (fire-and-forget)
-    if (employee.manager) {
+    // Notify manager first when manager is assigned
+    if (hasManager && employee.manager) {
       this.notificationService.sendNotification({
         recipientId: employee.manager.userId,
         subject: 'New Reimbursement Claim',
-        message: `${employee.firstName} ${employee.lastName} has submitted a reimbursement claim for ₹${dto.amount} (${dto.category}).`,
+        message: `${employee.firstName} ${employee.lastName} has submitted a reimbursement claim for Rs ${dto.amount} (${dto.category}).`,
         type: 'both',
       }).catch(err => console.error('Reimbursement createClaim notification failed:', err));
+    } else {
+      // No manager assigned: route directly to HR queue and notify HR/Director
+      this.prisma.user.findMany({
+        where: { role: { in: ['HR_HEAD', 'DIRECTOR'] } },
+      }).then(hrUsers => {
+        for (const hr of hrUsers) {
+          this.notificationService.sendNotification({
+            recipientId: hr.id,
+            subject: 'Reimbursement Pending HR Approval',
+            message: `${employee.firstName} ${employee.lastName} submitted a reimbursement claim pending HR approval.`,
+            type: 'both',
+          }).catch(err => console.error('Reimbursement createClaim HR notification failed:', err));
+        }
+      }).catch(err => console.error('Reimbursement createClaim HR user lookup failed:', err));
     }
 
     return claim;
@@ -423,3 +441,4 @@ export class ReimbursementService {
     };
   }
 }
+

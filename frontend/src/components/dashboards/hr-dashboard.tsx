@@ -23,6 +23,7 @@ import { QuickActions } from '@/components/dashboard/quick-actions';
 import { BarChart } from '@/components/charts/bar-chart';
 import { LineChart } from '@/components/charts/line-chart';
 import { dashboardAPI, recruitmentAPI } from '@/lib/api-client';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 
 const approvalConfig: Record<string, { icon: typeof Calendar; href: string; subtitle: string }> = {
   leave: { icon: Calendar, href: '/dashboard/leaves/approvals', subtitle: 'Pending HR approval' },
@@ -68,75 +69,85 @@ export function HRDashboard() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  React.useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [statsRes, pendingRes, leaveChartRes, attendanceChartRes, activitiesRes, recruitRes] = await Promise.all([
-          dashboardAPI.getStats(),
-          dashboardAPI.getPendingApprovals(),
-          dashboardAPI.getChartData('leave'),
-          dashboardAPI.getChartData('attendance'),
-          dashboardAPI.getActivities(10),
-          recruitmentAPI.getOverallStatistics().catch(() => ({ data: null })),
-        ]);
+  const fetchData = React.useCallback(async () => {
+    try {
+      const [statsRes, pendingRes, leaveChartRes, attendanceChartRes, activitiesRes, recruitRes] = await Promise.all([
+        dashboardAPI.getStats(),
+        dashboardAPI.getPendingApprovals(),
+        dashboardAPI.getChartData('leave'),
+        dashboardAPI.getChartData('attendance'),
+        dashboardAPI.getActivities(10),
+        recruitmentAPI.getOverallStatistics().catch(() => ({ data: null })),
+      ]);
 
-        if (statsRes.data) {
-          setStats(statsRes.data);
-        }
+      const nextStats = statsRes.data || {};
 
-        if (Array.isArray(pendingRes.data)) {
-          setPendingApprovals(
-            pendingRes.data.map((item: { type: string; title: string; count: number }, index: number) => {
-              const config = approvalConfig[item.type] || approvalConfig.leave;
-              return {
-                id: String(index + 1),
-                type: item.type,
-                title: item.title,
-                subtitle: config.subtitle,
-                count: item.count,
-                href: config.href,
-                icon: config.icon,
-                urgent: item.count > 10,
-              };
-            })
-          );
-        }
+      if (Array.isArray(pendingRes.data)) {
+        const mappedApprovals = pendingRes.data.map((item: { type: string; title: string; count: number }, index: number) => {
+          const config = approvalConfig[item.type] || approvalConfig.leave;
+          return {
+            id: String(index + 1),
+            type: item.type,
+            title: item.title,
+            subtitle: config.subtitle,
+            count: item.count,
+            href: config.href,
+            icon: config.icon,
+            urgent: item.count > 10,
+          };
+        });
+        setPendingApprovals(mappedApprovals);
 
-        if (Array.isArray(leaveChartRes.data)) {
-          setLeaveData(leaveChartRes.data);
-        }
-
-        if (Array.isArray(attendanceChartRes.data)) {
-          setAttendanceData(attendanceChartRes.data);
-        }
-
-        if (Array.isArray(activitiesRes.data)) {
-          const validTypes = ['leave', 'attendance', 'document', 'performance', 'reward', 'general'] as const;
-          type ActivityType = typeof validTypes[number];
-          setActivities(
-            activitiesRes.data.map((item: { id: string; type: string; title: string; description: string; timestamp: string; read: boolean }) => ({
-              id: item.id,
-              type: (validTypes.includes(item.type as ActivityType) ? item.type : 'general') as ActivityType,
-              title: item.title,
-              description: item.description,
-              user: { name: '' },
-              timestamp: new Date(item.timestamp),
-              status: (item.read ? 'completed' : 'pending') as 'completed' | 'pending',
-            }))
-          );
-        }
-
-        if (recruitRes.data) setRecruitmentStats(recruitRes.data);
-      } catch (error) {
-        console.error('Error fetching HR dashboard data:', error);
-      } finally {
-        setLoading(false);
+        // Keep top cards and pending panel fully consistent from a single payload
+        const approvalCount = (type: string) => mappedApprovals.find((x) => x.type === type)?.count || 0;
+        setStats({
+          pendingLeaves: approvalCount('leave'),
+          pendingDocuments: approvalCount('document'),
+          pendingReimbursements: approvalCount('reimbursement'),
+          newEmployeesThisMonth: nextStats.newEmployeesThisMonth || 0,
+        });
+      } else {
+        setStats({
+          pendingLeaves: nextStats.pendingLeaves || 0,
+          pendingDocuments: nextStats.pendingDocuments || 0,
+          pendingReimbursements: nextStats.pendingReimbursements || 0,
+          newEmployeesThisMonth: nextStats.newEmployeesThisMonth || 0,
+        });
       }
-    };
 
-    fetchData();
+      if (Array.isArray(leaveChartRes.data)) {
+        setLeaveData(leaveChartRes.data);
+      }
+
+      if (Array.isArray(attendanceChartRes.data)) {
+        setAttendanceData(attendanceChartRes.data);
+      }
+
+      if (Array.isArray(activitiesRes.data)) {
+        const validTypes = ['leave', 'attendance', 'document', 'performance', 'reward', 'general'] as const;
+        type ActivityType = typeof validTypes[number];
+        setActivities(
+          activitiesRes.data.map((item: { id: string; type: string; title: string; description: string; timestamp: string; read: boolean }) => ({
+            id: item.id,
+            type: (validTypes.includes(item.type as ActivityType) ? item.type : 'general') as ActivityType,
+            title: item.title,
+            description: item.description,
+            user: { name: '' },
+            timestamp: new Date(item.timestamp),
+            status: (item.read ? 'completed' : 'pending') as 'completed' | 'pending',
+          }))
+        );
+      }
+
+      if (recruitRes.data) setRecruitmentStats(recruitRes.data);
+    } catch (error) {
+      console.error('Error fetching HR dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useRealtimeRefresh(fetchData, 30000);
 
   if (loading) {
     return (

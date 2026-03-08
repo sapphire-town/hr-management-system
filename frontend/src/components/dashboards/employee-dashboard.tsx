@@ -17,6 +17,7 @@ import { StatsCard, StatsGrid } from '@/components/dashboard/stats-card';
 import { ActivityFeed, type Activity } from '@/components/dashboard/activity-feed';
 import { QuickActions } from '@/components/dashboard/quick-actions';
 import { performanceAPI, dashboardAPI } from '@/lib/api-client';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 
 interface PerformanceData {
   overallScore: number;
@@ -155,47 +156,45 @@ export function EmployeeDashboard() {
     return () => window.removeEventListener('resize', checkScreen);
   }, []);
 
-  React.useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [perfRes, historyRes, dashRes] = await Promise.all([
-          performanceAPI.getMyPerformance({ period: 'monthly' }),
-          performanceAPI.getMyHistory(6),
-          dashboardAPI.getStats(),
-        ]);
-        setPerformance(perfRes.data);
-        setPerformanceHistory(historyRes.data || []);
+  const defaultLeaveBalances = React.useMemo(
+    () => ([
+      { type: 'Sick Leave', used: 0, total: 12, remaining: 12, color: '#ef4444' },
+      { type: 'Casual Leave', used: 0, total: 12, remaining: 12, color: '#3b82f6' },
+      { type: 'Earned Leave', used: 0, total: 15, remaining: 15, color: '#22c55e' },
+    ]),
+    [],
+  );
 
-        // Construct leave balances from dashboard stats
-        if (dashRes.data?.leaveBalance) {
-          const lb = dashRes.data.leaveBalance;
-          setLeaveBalances([
-            { type: 'Sick Leave', used: 12 - (lb.sick || 0), total: 12, remaining: lb.sick || 0, color: '#ef4444' },
-            { type: 'Casual Leave', used: 12 - (lb.casual || 0), total: 12, remaining: lb.casual || 0, color: '#3b82f6' },
-            { type: 'Earned Leave', used: 15 - (lb.earned || 0), total: 15, remaining: lb.earned || 0, color: '#22c55e' },
-          ]);
-        } else {
-          setLeaveBalances([
-            { type: 'Sick Leave', used: 0, total: 12, remaining: 12, color: '#ef4444' },
-            { type: 'Casual Leave', used: 0, total: 12, remaining: 12, color: '#3b82f6' },
-            { type: 'Earned Leave', used: 0, total: 15, remaining: 15, color: '#22c55e' },
-          ]);
-        }
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+  const fetchData = React.useCallback(async () => {
+    try {
+      const [perfRes, historyRes, dashRes] = await Promise.all([
+        performanceAPI.getMyPerformance({ period: 'monthly' }),
+        performanceAPI.getMyHistory(6),
+        dashboardAPI.getStats(),
+      ]);
+      setPerformance(perfRes.data);
+      setPerformanceHistory(historyRes.data || []);
+
+      // Construct leave balances from dashboard stats
+      if (dashRes.data?.leaveBalance && typeof dashRes.data.leaveBalance === 'object') {
+        const lb = dashRes.data.leaveBalance;
         setLeaveBalances([
-          { type: 'Sick Leave', used: 0, total: 12, remaining: 12, color: '#ef4444' },
-          { type: 'Casual Leave', used: 0, total: 12, remaining: 12, color: '#3b82f6' },
-          { type: 'Earned Leave', used: 0, total: 15, remaining: 15, color: '#22c55e' },
+          { type: 'Sick Leave', used: 12 - (lb.sick || 0), total: 12, remaining: lb.sick || 0, color: '#ef4444' },
+          { type: 'Casual Leave', used: 12 - (lb.casual || 0), total: 12, remaining: lb.casual || 0, color: '#3b82f6' },
+          { type: 'Earned Leave', used: 15 - (lb.earned || 0), total: 15, remaining: lb.earned || 0, color: '#22c55e' },
         ]);
-      } finally {
-        setLoading(false);
+      } else {
+        setLeaveBalances(defaultLeaveBalances);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setLeaveBalances(defaultLeaveBalances);
+    } finally {
+      setLoading(false);
+    }
+  }, [defaultLeaveBalances]);
 
-    fetchData();
-  }, []);
+  useRealtimeRefresh(fetchData, 30000);
 
   const getTrendIcon = (trend: 'up' | 'down' | 'stable') => {
     switch (trend) {

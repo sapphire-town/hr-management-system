@@ -3,6 +3,7 @@
 import * as React from 'react';
 import {
   Users,
+  Briefcase,
   Building2,
   TrendingUp,
   Award,
@@ -26,6 +27,7 @@ import { BarChart } from '@/components/charts/bar-chart';
 import { LineChart } from '@/components/charts/line-chart';
 import { DonutChart } from '@/components/charts/pie-chart';
 import { performanceAPI, dashboardAPI, directorsListAPI, recruitmentAPI } from '@/lib/api-client';
+import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 
 interface DepartmentPerformance {
   department: string;
@@ -103,31 +105,28 @@ export function DirectorDashboard() {
     return () => window.removeEventListener('resize', checkScreen);
   }, []);
 
-  React.useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const [companyRes, dashboardRes, dlStatsRes, dlCurrentRes, recruitRes] = await Promise.all([
-          performanceAPI.getCompanyPerformance({ period: 'monthly' }),
-          dashboardAPI.getStats(),
-          directorsListAPI.getStats(),
-          directorsListAPI.getCurrent(),
-          recruitmentAPI.getOverallStatistics().catch(() => ({ data: null })),
-        ]);
-        setCompanyData(companyRes.data);
-        setDashboardStats(dashboardRes.data);
-        setDirectorsListStats(dlStatsRes.data);
-        setRecentNominations(dlCurrentRes.data?.slice(0, 5) || []);
-        if (recruitRes.data) setRecruitmentStats(recruitRes.data);
-      } catch (error) {
-        console.error('Error fetching performance data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+  const fetchData = React.useCallback(async () => {
+    try {
+      const [companyRes, dashboardRes, dlStatsRes, dlCurrentRes, recruitRes] = await Promise.all([
+        performanceAPI.getCompanyPerformance({ period: 'monthly' }),
+        dashboardAPI.getStats(),
+        directorsListAPI.getStats(),
+        directorsListAPI.getCurrent(),
+        recruitmentAPI.getOverallStatistics().catch(() => ({ data: null })),
+      ]);
+      setCompanyData(companyRes.data);
+      setDashboardStats(dashboardRes.data);
+      setDirectorsListStats(dlStatsRes.data);
+      setRecentNominations(dlCurrentRes.data?.slice(0, 5) || []);
+      if (recruitRes.data) setRecruitmentStats(recruitRes.data);
+    } catch (error) {
+      console.error('Error fetching performance data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useRealtimeRefresh(fetchData, 30000);
 
   if (loading) {
     return (
@@ -139,8 +138,9 @@ export function DirectorDashboard() {
 
   const stats = {
     totalEmployees: companyData?.totalEmployees || 0,
-    departments: companyData?.departmentPerformance?.length || 0,
-    hiringRequests: dashboardStats?.activeHiring || 0,
+    roles: dashboardStats?.roles || 0,
+    departments: dashboardStats?.departments ?? (companyData?.departmentPerformance?.length || 0),
+    hiringRequests: dashboardStats?.hiringRequests || 0,
     performanceScore: companyData?.averagePerformanceScore || 0,
     attendanceRate: companyData?.overallAttendanceRate || 0,
   };
@@ -191,7 +191,9 @@ export function DirectorDashboard() {
       {/* Stats */}
       <StatsGrid>
         <StatsCard title="Total Employees" value={stats.totalEmployees} icon={Users} />
+        <StatsCard title="Roles" value={stats.roles} icon={Briefcase} />
         <StatsCard title="Departments" value={stats.departments} icon={Building2} />
+        <StatsCard title="Hiring Requests" value={stats.hiringRequests} icon={UserPlus} />
         <StatsCard
           title="Avg Performance"
           value={`${stats.performanceScore}%`}

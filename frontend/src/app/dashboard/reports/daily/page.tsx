@@ -394,6 +394,20 @@ export default function DailyReportPage() {
     );
   }
 
+  const handleViewAttachment = async (att: { fileName: string; filePath: string }) => {
+    try {
+      const filename = att.filePath?.split('/').pop() || att.fileName;
+      const response = await dailyReportAPI.downloadAttachment(filename);
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      const blob = new Blob([response.data], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error('Failed to view attachment:', error);
+      alert('Failed to open attachment. The file may no longer exist.');
+    }
+  };
+
   const isTodaySelected = selectedDate === format(new Date(), 'yyyy-MM-dd');
   const hasSubmittedToday = todayReport !== null;
 
@@ -1128,11 +1142,9 @@ export default function DailyReportPage() {
                             </span>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                               {viewingReport.attachments.filter(a => a.paramKey === param.key).map((att, aIdx) => (
-                                <a
+                                <button
                                   key={aIdx}
-                                  href={dailyReportAPI.getAttachmentUrl(att.filePath?.split('/').pop() || att.fileName)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
+                                  onClick={() => handleViewAttachment(att)}
                                   style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -1142,13 +1154,14 @@ export default function DailyReportPage() {
                                     borderRadius: '6px',
                                     fontSize: '12px',
                                     color: '#7c3aed',
-                                    textDecoration: 'none',
+                                    cursor: 'pointer',
                                     border: '1px solid #ede9fe',
                                   }}
+                                  title="View attachment"
                                 >
                                   <Download style={{ height: '12px', width: '12px' }} />
-                                  {att.fileName}
-                                </a>
+                                  {att.fileName || att.filePath?.split('/').pop() || `Attachment ${aIdx + 1}`}
+                                </button>
                               ))}
                             </div>
                           </div>
@@ -1183,11 +1196,9 @@ export default function DailyReportPage() {
                   </h4>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                     {viewingReport.attachments.filter(a => !a.paramKey).map((att, idx) => (
-                      <a
+                      <button
                         key={idx}
-                        href={dailyReportAPI.getAttachmentUrl(att.filePath?.split('/').pop() || att.fileName)}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        onClick={() => handleViewAttachment(att)}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -1198,12 +1209,13 @@ export default function DailyReportPage() {
                           border: '1px solid #bbf7d0',
                           fontSize: '13px',
                           color: '#166534',
-                          textDecoration: 'none',
+                          cursor: 'pointer',
                         }}
+                        title="View attachment"
                       >
                         <Download style={{ height: '14px', width: '14px' }} />
-                        {att.fileName}
-                      </a>
+                        {att.fileName || att.filePath?.split('/').pop() || `Attachment ${idx + 1}`}
+                      </button>
                     ))}
                   </div>
                 </div>

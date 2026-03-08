@@ -60,6 +60,7 @@ export default function LoginPage() {
     fontSize: '14px',
     outline: 'none',
     transition: 'all 0.2s',
+    boxSizing: 'border-box',
   };
 
   const inputFocusStyle: React.CSSProperties = {
@@ -311,33 +312,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Default Credentials */}
-          <div
-            style={{
-              marginTop: '32px',
-              padding: '16px',
-              backgroundColor: '#f9fafb',
-              borderRadius: '12px',
-              border: '1px solid #f3f4f6',
-            }}
-          >
-            <p
-              style={{
-                textAlign: 'center',
-                fontSize: '14px',
-                color: '#6b7280',
-                marginBottom: '8px',
-              }}
-            >
-              Test credentials (password: <span style={{ color: '#7c3aed', fontWeight: 500 }}>password123</span>)
-            </p>
-            <div style={{ fontSize: '13px', color: '#6b7280', lineHeight: '1.6' }}>
-              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>hr@company.com</span> - HR Head</div>
-              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>director@company.com</span> - Director</div>
-              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>manager@company.com</span> - Manager</div>
-              <div><span style={{ color: '#7c3aed', fontWeight: 500 }}>employee@company.com</span> - Employee</div>
-            </div>
-          </div>
         </div>
       </div>
 

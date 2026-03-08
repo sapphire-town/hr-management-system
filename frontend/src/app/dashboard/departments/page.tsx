@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
 import { useAuthStore } from '@/store/auth-store';
-import { roleAPI } from '@/lib/api-client';
+import { departmentAPI } from '@/lib/api-client';
 
 interface Department {
   id: string;
@@ -32,7 +32,7 @@ interface Department {
 }
 
 interface DepartmentStats {
-  roles: {
+  departments: {
     id: string;
     name: string;
     current: number;
@@ -209,8 +209,8 @@ export default function DepartmentsPage() {
     try {
       setLoading(true);
       const [deptRes, statsRes] = await Promise.all([
-        roleAPI.getAll(),
-        roleAPI.getStatistics(),
+        departmentAPI.getAll(),
+        departmentAPI.getStatistics(),
       ]);
 
       const deptData = deptRes.data || [];
@@ -229,7 +229,7 @@ export default function DepartmentsPage() {
 
   // Get stats for a specific department
   const getDeptStats = (deptId: string) => {
-    return stats?.roles.find(r => r.id === deptId);
+    return stats?.departments.find(r => r.id === deptId);
   };
 
   const getStatusBadge = (current: number, required: number) => {
@@ -265,7 +265,7 @@ export default function DepartmentsPage() {
 
     try {
       setSubmitting(true);
-      await roleAPI.create({ name: createForm.name.trim() });
+      await departmentAPI.create({ name: createForm.name.trim() });
       setShowCreateModal(false);
       setCreateForm({ name: '' });
       fetchData();
@@ -288,7 +288,7 @@ export default function DepartmentsPage() {
 
     try {
       setSubmitting(true);
-      await roleAPI.update(selectedDept.id, { name: editForm.name.trim() });
+      await departmentAPI.update(selectedDept.id, { name: editForm.name.trim() });
       setShowEditModal(false);
       fetchData();
     } catch (error: any) {
@@ -311,7 +311,7 @@ export default function DepartmentsPage() {
 
     try {
       setSubmitting(true);
-      await roleAPI.setRequirements(selectedDept.id, requirementsForm.minimumRequired);
+      await departmentAPI.setRequirements(selectedDept.id, requirementsForm.minimumRequired);
       setShowRequirementsModal(false);
       fetchData();
     } catch (error: any) {
@@ -332,7 +332,7 @@ export default function DepartmentsPage() {
 
     try {
       setSubmitting(true);
-      await roleAPI.delete(selectedDept.id);
+      await departmentAPI.delete(selectedDept.id);
       setShowDeleteModal(false);
       fetchData();
     } catch (error: any) {
