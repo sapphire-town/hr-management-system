@@ -38,7 +38,7 @@ jobs:
       - name: Download current task definition
         run: |
           aws ecs describe-task-definition \
-            --task-definition {{ vars.TASK_DEF_NAME }} \
+            --task-definition ${{ vars.TASK_DEF_NAME }} \
             --query taskDefinition > task-definition.json
 
       - name: Render new task definition with updated image
