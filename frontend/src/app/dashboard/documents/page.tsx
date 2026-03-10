@@ -451,9 +451,9 @@ export default function DocumentsPage() {
 
       // Cleanup after a delay
       setTimeout(() => window.URL.revokeObjectURL(url), 60000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error viewing document:', error);
-      alert('Failed to view document. You may not have permission to view this file.');
+      alert(error.response?.data?.message || 'Failed to view document');
     }
   };
 

@@ -33,6 +33,8 @@ import { DailyReportModule } from './daily-report/daily-report.module';
 import { TicketModule } from './ticket/ticket.module';
 import { HiringModule } from './hiring/hiring.module';
 import { RewardModule } from './reward/reward.module';
+import { StorageModule } from './common/storage/storage.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   controllers: [HealthController],
@@ -42,6 +44,8 @@ import { RewardModule } from './reward/reward.module';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    StorageModule,
+    HealthModule,
     AuthModule,
     NotificationModule,
     DashboardModule,

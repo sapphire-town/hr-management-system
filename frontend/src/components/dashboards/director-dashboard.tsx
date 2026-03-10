@@ -79,6 +79,12 @@ interface DirectorsListEntry {
 
 export function DirectorDashboard() {
   const [loading, setLoading] = React.useState(true);
+  const [sectionLoading, setSectionLoading] = React.useState({
+    dashboard: true,
+    directors: true,
+    recruitment: true,
+    company: true,
+  });
   const [companyData, setCompanyData] = React.useState<CompanyPerformance | null>(null);
   const [dashboardStats, setDashboardStats] = React.useState<any>(null);
   const [directorsListStats, setDirectorsListStats] = React.useState<DirectorsListStats | null>(null);
@@ -106,43 +112,76 @@ export function DirectorDashboard() {
   }, []);
 
   const fetchData = React.useCallback(async () => {
+    const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> =>
+      Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`Request timeout after ${timeoutMs}ms`)), timeoutMs),
+        ),
+      ]);
+
+    setSectionLoading({
+      dashboard: true,
+      directors: true,
+      recruitment: true,
+      company: true,
+    });
+
     try {
-      const [companyRes, dashboardRes, dlStatsRes, dlCurrentRes, recruitRes] = await Promise.all([
-        performanceAPI.getCompanyPerformance({ period: 'monthly' }),
-        dashboardAPI.getStats(),
+      const dashboardRes = await dashboardAPI.getStats();
+      setDashboardStats(dashboardRes.data);
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    } finally {
+      setSectionLoading((prev) => ({ ...prev, dashboard: false }));
+      setLoading(false);
+    }
+
+    try {
+      const [dlStatsRes, dlCurrentRes] = await Promise.all([
         directorsListAPI.getStats(),
         directorsListAPI.getCurrent(),
-        recruitmentAPI.getOverallStatistics().catch(() => ({ data: null })),
       ]);
-      setCompanyData(companyRes.data);
-      setDashboardStats(dashboardRes.data);
       setDirectorsListStats(dlStatsRes.data);
       setRecentNominations(dlCurrentRes.data?.slice(0, 5) || []);
+    } catch (error) {
+      console.error('Error fetching directors list data:', error);
+    } finally {
+      setSectionLoading((prev) => ({ ...prev, directors: false }));
+    }
+
+    try {
+      const recruitRes = await recruitmentAPI.getOverallStatistics();
       if (recruitRes.data) setRecruitmentStats(recruitRes.data);
     } catch (error) {
-      console.error('Error fetching performance data:', error);
+      console.error('Error fetching recruitment stats:', error);
     } finally {
-      setLoading(false);
+      setSectionLoading((prev) => ({ ...prev, recruitment: false }));
+    }
+
+    try {
+      const companyRes = await withTimeout(
+        performanceAPI.getCompanyPerformance({ period: 'monthly' }),
+        12000,
+      );
+      setCompanyData(companyRes.data);
+    } catch (companyError) {
+      console.error('Company performance API is slow/unavailable:', companyError);
+      setCompanyData(null);
+    } finally {
+      setSectionLoading((prev) => ({ ...prev, company: false }));
     }
   }, []);
 
   useRealtimeRefresh(fetchData, 30000);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
-        <Loader2 style={{ width: '32px', height: '32px', color: '#7c3aed', animation: 'spin 1s linear infinite' }} />
-      </div>
-    );
-  }
-
   const stats = {
-    totalEmployees: companyData?.totalEmployees || 0,
-    roles: dashboardStats?.roles || 0,
-    departments: dashboardStats?.departments ?? (companyData?.departmentPerformance?.length || 0),
-    hiringRequests: dashboardStats?.hiringRequests || 0,
-    performanceScore: companyData?.averagePerformanceScore || 0,
-    attendanceRate: companyData?.overallAttendanceRate || 0,
+    totalEmployees: companyData?.totalEmployees ?? (sectionLoading.company ? '...' : 0),
+    roles: dashboardStats?.roles ?? (sectionLoading.dashboard ? '...' : 0),
+    departments: dashboardStats?.departments ?? (companyData?.departmentPerformance?.length ?? (sectionLoading.dashboard ? '...' : 0)),
+    hiringRequests: dashboardStats?.hiringRequests ?? (sectionLoading.dashboard ? '...' : 0),
+    performanceScore: companyData?.averagePerformanceScore ?? (sectionLoading.company ? '...' : 0),
+    attendanceRate: companyData?.overallAttendanceRate ?? (sectionLoading.company ? '...' : 0),
   };
 
   const departmentChartData = (companyData?.departmentPerformance || []).map(d => ({
@@ -166,6 +205,8 @@ export function DirectorDashboard() {
         { name: 'Needs Improvement', value: companyData.performanceDistribution.needsImprovement },
       ]
     : [];
+  const performanceScoreNumber =
+    typeof stats.performanceScore === 'number' ? stats.performanceScore : 0;
 
   const getTrendIcon = (trend: 'up' | 'down' | 'stable') => {
     switch (trend) {
@@ -188,6 +229,13 @@ export function DirectorDashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#6b7280', fontSize: '13px' }}>
+          <Loader2 style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />
+          Loading dashboard data...
+        </div>
+      )}
+
       {/* Stats */}
       <StatsGrid>
         <StatsCard title="Total Employees" value={stats.totalEmployees} icon={Users} />
@@ -197,7 +245,7 @@ export function DirectorDashboard() {
         <StatsCard
           title="Avg Performance"
           value={`${stats.performanceScore}%`}
-          trend={stats.performanceScore >= 80 ? { value: stats.performanceScore - 80, label: 'above target' } : undefined}
+          trend={performanceScoreNumber >= 80 ? { value: performanceScoreNumber - 80, label: 'above target' } : undefined}
           icon={TrendingUp}
         />
         <StatsCard title="Attendance Rate" value={`${stats.attendanceRate}%`} icon={Award} />
@@ -206,7 +254,12 @@ export function DirectorDashboard() {
       {/* Charts Row */}
       <div style={{ display: 'grid', gridTemplateColumns: isLargeScreen ? '1fr 1fr' : '1fr', gap: '24px' }}>
         <ChartCard title="Department Performance" subtitle="Performance score and attendance by department">
-          {departmentChartData.length > 0 ? (
+          {sectionLoading.company ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '256px', color: '#6b7280', gap: '8px' }}>
+              <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+              Loading department performance...
+            </div>
+          ) : departmentChartData.length > 0 ? (
             <BarChart data={departmentChartData} dataKey={['performance', 'attendance']} xAxisKey="name" showLegend />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '256px', color: '#6b7280' }}>
@@ -216,7 +269,12 @@ export function DirectorDashboard() {
         </ChartCard>
 
         <ChartCard title="Performance Trends" subtitle="Monthly performance and attendance trends">
-          {trendChartData.length > 0 ? (
+          {sectionLoading.company ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '256px', color: '#6b7280', gap: '8px' }}>
+              <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+              Loading performance trends...
+            </div>
+          ) : trendChartData.length > 0 ? (
             <LineChart data={trendChartData} dataKey={['performance', 'attendance']} xAxisKey="month" showLegend />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '256px', color: '#6b7280' }}>
@@ -229,7 +287,12 @@ export function DirectorDashboard() {
       {/* Second Row: Distribution + Top Performers */}
       <div style={{ display: 'grid', gridTemplateColumns: isLargeScreen ? '1fr 2fr' : '1fr', gap: '24px' }}>
         <ChartCard title="Performance Distribution" subtitle="Employee performance breakdown">
-          {distributionData.some(d => d.value > 0) ? (
+          {sectionLoading.company ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '256px', color: '#6b7280', gap: '8px' }}>
+              <Loader2 style={{ width: '16px', height: '16px', animation: 'spin 1s linear infinite' }} />
+              Loading distribution...
+            </div>
+          ) : distributionData.some(d => d.value > 0) ? (
             <DonutChart data={distributionData} />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '256px', color: '#6b7280' }}>

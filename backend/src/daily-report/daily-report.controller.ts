@@ -20,6 +20,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { DailyReportService } from './daily-report.service';
+import { ObjectStorageService } from '../common/storage/storage.service';
 import {
   CreateDailyReportDto,
   UpdateDailyReportDto,
@@ -27,34 +28,23 @@ import {
   DailyReportFilterDto,
 } from './dto/daily-report.dto';
 import { ReportPerformanceFilterDto } from './dto/daily-report-performance.dto';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { extname, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { Response } from 'express';
 import * as fs from 'fs';
 
-// Configure multer storage
-const storage = diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = join(process.cwd(), 'uploads', 'daily-reports');
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = `${uuidv4()}${extname(file.originalname)}`;
-    cb(null, uniqueSuffix);
-  },
-});
+const storage = memoryStorage();
 
 @ApiTags('Daily Reports')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('daily-reports')
 export class DailyReportController {
-  constructor(private readonly dailyReportService: DailyReportService) {}
+  constructor(
+    private readonly dailyReportService: DailyReportService,
+    private readonly objectStorage: ObjectStorageService,
+  ) {}
 
   // Employee endpoints
 
@@ -104,11 +94,18 @@ export class DailyReportController {
     @UploadedFiles() files: Express.Multer.File[],
     @Body('paramKey') paramKey?: string,
   ) {
-    const attachments = files.map((file) => ({
-      fileName: file.originalname,
-      filePath: `/uploads/daily-reports/${file.filename}`,
-      paramKey: paramKey || null,
-    }));
+    const attachments = await Promise.all(
+      files.map(async (file) => {
+        const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
+        const objectKey = `daily-reports/${uniqueName}`;
+        await this.objectStorage.uploadBuffer(objectKey, file.buffer, file.mimetype);
+        return {
+          fileName: file.originalname,
+          filePath: `/uploads/daily-reports/${uniqueName}`,
+          paramKey: paramKey || null,
+        };
+      }),
+    );
 
     return { attachments };
   }
@@ -119,13 +116,33 @@ export class DailyReportController {
     @Param('filename') filename: string,
     @Res() res: Response,
   ) {
-    const filePath = join(process.cwd(), 'uploads', 'daily-reports', filename);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: 'File not found' });
+    const objectKey = `daily-reports/${filename}`;
+    const fromStorage = await this.objectStorage.getBuffer(objectKey);
+    if (fromStorage) {
+      const ext = filename.split('.').pop()?.toLowerCase() || '';
+      const contentTypes: Record<string, string> = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        gif: 'image/gif',
+        webp: 'image/webp',
+        pdf: 'application/pdf',
+        doc: 'application/msword',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xls: 'application/vnd.ms-excel',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        txt: 'text/plain',
+        csv: 'text/csv',
+      };
+      res.setHeader('Content-Type', contentTypes[ext] || 'application/octet-stream');
+      return res.send(fromStorage);
     }
 
-    return res.sendFile(filePath);
+    const filePath = join(process.cwd(), 'uploads', 'daily-reports', filename);
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    }
+    return res.status(404).json({ message: 'File not found' });
   }
 
   @Get('my')

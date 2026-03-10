@@ -5,9 +5,9 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { ObjectStorageService } from '../common/storage/storage.service';
 import { NotificationService } from '../notification/notification.service';
 import {
-  UploadDocumentDto,
   UploadVerificationDocumentDto,
   VerifyDocumentDto,
   ReleaseDocumentDto,
@@ -25,7 +25,48 @@ export class DocumentService {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
+    private objectStorage: ObjectStorageService,
   ) {}
+
+  private normalizeStoredFilePath(filePath: string): string {
+    return filePath.replace(/^\/+/, '').replace(/\\/g, '/');
+  }
+
+  resolveReadableFilePath(storedFilePath: string): string | null {
+    const candidates = new Set<string>();
+    const normalizedForward = storedFilePath.replace(/\\/g, '/');
+    const normalizedNative = normalizedForward.split('/').join(path.sep);
+    const onlyFileName = path.basename(normalizedForward);
+
+    candidates.add(storedFilePath);
+    candidates.add(normalizedForward);
+    candidates.add(normalizedNative);
+    candidates.add(path.join('uploads', 'documents', onlyFileName));
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const absolutePath = path.isAbsolute(candidate)
+        ? candidate
+        : path.join(process.cwd(), candidate);
+      if (fs.existsSync(absolutePath)) {
+        return absolutePath;
+      }
+    }
+    return null;
+  }
+
+  async getStoredFileBuffer(storedFilePath: string): Promise<Buffer | null> {
+    const normalized = this.normalizeStoredFilePath(storedFilePath);
+    const fromStorage = await this.objectStorage.getBuffer(normalized);
+    if (fromStorage) {
+      return fromStorage;
+    }
+    const localPath = this.resolveReadableFilePath(normalized);
+    if (!localPath) {
+      return null;
+    }
+    return fs.readFileSync(localPath);
+  }
 
   // Employee Documents (released by HR)
   async getMyDocuments(employeeId: string) {
@@ -35,7 +76,13 @@ export class DocumentService {
     });
   }
 
-  async releaseDocument(dto: ReleaseDocumentDto, releasedBy: string, filePath: string, fileName: string) {
+  async releaseDocument(
+    dto: ReleaseDocumentDto,
+    releasedBy: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType?: string,
+  ) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: { user: true },
@@ -45,12 +92,15 @@ export class DocumentService {
       throw new NotFoundException('Employee not found');
     }
 
+    const objectKey = this.objectStorage.buildObjectKey('documents/releases', fileName);
+    const storedPath = await this.objectStorage.uploadBuffer(objectKey, fileBuffer, mimeType);
+
     const document = await this.prisma.document.create({
       data: {
         employeeId: dto.employeeId,
         documentType: dto.documentType,
         fileName,
-        filePath,
+        filePath: this.normalizeStoredFilePath(storedPath),
         description: dto.description,
         releasedBy,
         releasedAt: new Date(),
@@ -72,8 +122,9 @@ export class DocumentService {
   async bulkReleaseDocument(
     dto: BulkReleaseDocumentDto,
     releasedBy: string,
-    filePath: string,
+    fileBuffer: Buffer,
     fileName: string,
+    mimeType?: string,
   ) {
     const employeeIds = dto.employeeIds.split(',').map((id) => id.trim()).filter(Boolean);
 
@@ -90,6 +141,9 @@ export class DocumentService {
       throw new NotFoundException('No valid employees found');
     }
 
+    const objectKey = this.objectStorage.buildObjectKey('documents/releases', fileName);
+    const storedPath = await this.objectStorage.uploadBuffer(objectKey, fileBuffer, mimeType);
+
     const now = new Date();
     const generated: any[] = [];
     const failed: { employeeId: string; error: string }[] = [];
@@ -101,7 +155,7 @@ export class DocumentService {
             employeeId: employee.id,
             documentType: dto.documentType,
             fileName,
-            filePath,
+            filePath: this.normalizeStoredFilePath(storedPath),
             description: dto.description,
             releasedBy,
             releasedAt: now,
@@ -190,8 +244,9 @@ export class DocumentService {
   async uploadForVerification(
     employeeId: string,
     dto: UploadVerificationDocumentDto,
-    filePath: string,
+    fileBuffer: Buffer,
     fileName: string,
+    mimeType?: string,
   ) {
     // Check if document of same type already exists
     const existing = await this.prisma.documentVerification.findFirst({
@@ -214,12 +269,15 @@ export class DocumentService {
       include: { user: true },
     });
 
+    const objectKey = this.objectStorage.buildObjectKey('documents/verification', fileName);
+    const storedPath = await this.objectStorage.uploadBuffer(objectKey, fileBuffer, mimeType);
+
     const document = await this.prisma.documentVerification.create({
       data: {
         employeeId,
         documentType: dto.documentType,
         fileName,
-        filePath,
+        filePath: this.normalizeStoredFilePath(storedPath),
         status: 'UPLOADED',
       },
     });
@@ -497,11 +555,6 @@ export class DocumentService {
     const settings = await this.prisma.companySettings.findFirst();
     const companyName = settings?.companyName || 'Company';
 
-    const outputDir = './uploads/documents';
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
     const now = new Date();
     const formatDate = (date: Date | null) => {
       if (!date) return '';
@@ -587,20 +640,23 @@ export class DocumentService {
           }
 
           // Convert HTML to PDF using puppeteer
-          const timestamp = Date.now();
-          const safeFileName = `${template.documentType}-${employee.firstName}-${employee.lastName}-${timestamp}.pdf`
-            .replace(/\s+/g, '-');
-          const outputPath = path.join(outputDir, safeFileName);
-
           const page = await browser.newPage();
           await page.setContent(html, { waitUntil: 'networkidle0' });
-          await page.pdf({
-            path: outputPath,
+          const pdfBytes = await page.pdf({
             format: 'A4',
             printBackground: true,
             margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
           });
           await page.close();
+
+          const generatedFileName = `${template.name}-${employee.firstName}-${employee.lastName}.pdf`
+            .replace(/\s+/g, '-');
+          const objectKey = this.objectStorage.buildObjectKey('documents/generated', generatedFileName);
+          const storedPath = await this.objectStorage.uploadBuffer(
+            objectKey,
+            Buffer.from(pdfBytes),
+            'application/pdf',
+          );
 
           // Create Document record
           const document = await this.prisma.document.create({
@@ -608,7 +664,7 @@ export class DocumentService {
               employeeId: employee.id,
               documentType: template.documentType,
               fileName: `${template.name} - ${employee.firstName} ${employee.lastName}.pdf`,
-              filePath: outputPath,
+              filePath: this.normalizeStoredFilePath(storedPath),
               description: `Auto-generated from template: ${template.name}`,
               releasedBy: generatedBy,
               releasedAt: now,

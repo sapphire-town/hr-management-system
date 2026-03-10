@@ -29,10 +29,23 @@ import {
 @Injectable()
 export class PerformanceService {
   constructor(private prisma: PrismaService) {}
+  private workingDaysCache:
+    | {
+        value: number[];
+        loadedAt: number;
+      }
+    | null = null;
 
   private async getConfiguredWorkingDays(): Promise<number[]> {
+    const now = Date.now();
+    if (this.workingDaysCache && now - this.workingDaysCache.loadedAt < 5 * 60 * 1000) {
+      return this.workingDaysCache.value;
+    }
+
     const settings = await this.prisma.companySettings.findFirst();
-    return (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+    const value = (settings?.workingDays as number[]) || [1, 2, 3, 4, 5];
+    this.workingDaysCache = { value, loadedAt: now };
+    return value;
   }
 
   private getDateRange(period: PerformancePeriod, startDate?: string, endDate?: string) {
@@ -97,6 +110,24 @@ export class PerformanceService {
     if (diff > 2) return 'up';
     if (diff < -2) return 'down';
     return 'stable';
+  }
+
+  private async mapInBatches<T, U>(
+    items: T[],
+    batchSize: number,
+    mapper: (item: T) => Promise<U | null>,
+  ): Promise<U[]> {
+    const results: U[] = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(mapper));
+      for (const value of batchResults) {
+        if (value !== null) {
+          results.push(value);
+        }
+      }
+    }
+    return results;
   }
 
   async getEmployeePerformance(
@@ -284,16 +315,17 @@ export class PerformanceService {
     for (const role of roles) {
       if (role.employees.length === 0) continue;
 
-      const employeePerformances: EmployeePerformanceDto[] = [];
-
-      for (const employee of role.employees) {
-        try {
-          const performance = await this.getEmployeePerformance(employee.id, filters);
-          employeePerformances.push(performance);
-        } catch (e) {
-          // Skip employees with errors
-        }
-      }
+      const employeePerformances = await this.mapInBatches(
+        role.employees,
+        8,
+        async (employee) => {
+          try {
+            return await this.getEmployeePerformance(employee.id, filters);
+          } catch {
+            return null;
+          }
+        },
+      );
 
       if (employeePerformances.length === 0) continue;
 
@@ -330,16 +362,17 @@ export class PerformanceService {
       include: { user: true, role: true },
     });
 
-    const employeePerformances: EmployeePerformanceDto[] = [];
-
-    for (const employee of employees) {
-      try {
-        const performance = await this.getEmployeePerformance(employee.id, filters);
-        employeePerformances.push(performance);
-      } catch (e) {
-        // Skip employees with errors
-      }
-    }
+    const employeePerformances = await this.mapInBatches(
+      employees,
+      8,
+      async (employee) => {
+        try {
+          return await this.getEmployeePerformance(employee.id, filters);
+        } catch {
+          return null;
+        }
+      },
+    );
 
     const totalEmployees = employees.length;
     const averagePerformanceScore = employeePerformances.length > 0
@@ -382,43 +415,60 @@ export class PerformanceService {
   async getPerformanceTrends(months: number = 6): Promise<PerformanceTrendDto[]> {
     const trends: PerformanceTrendDto[] = [];
     const now = new Date();
+    const employees = await this.prisma.employee.findMany({ select: { id: true } });
+    const employeeCount = employees.length;
 
     for (let i = months - 1; i >= 0; i--) {
       const monthStart = startOfMonth(subMonths(now, i));
       const monthEnd = endOfMonth(subMonths(now, i));
-
-      const employees = await this.prisma.employee.findMany();
       const workingDays = await this.getWorkingDaysCount(monthStart, monthEnd);
+      const groupedAttendance = await this.prisma.attendance.groupBy({
+        by: ['employeeId', 'status'],
+        where: {
+          date: { gte: monthStart, lte: monthEnd },
+        },
+        _count: { _all: true },
+      });
+
+      const attendanceByEmployee = new Map<
+        string,
+        { present: number; halfDay: number; total: number }
+      >();
+
+      for (const row of groupedAttendance) {
+        const current = attendanceByEmployee.get(row.employeeId) || {
+          present: 0,
+          halfDay: 0,
+          total: 0,
+        };
+
+        current.total += row._count._all;
+        if (row.status === 'PRESENT') {
+          current.present += row._count._all;
+        } else if (row.status === 'HALF_DAY') {
+          current.halfDay += row._count._all;
+        }
+        attendanceByEmployee.set(row.employeeId, current);
+      }
 
       let totalScore = 0;
       let totalAttendanceRate = 0;
       let validEmployees = 0;
 
-      for (const employee of employees) {
-        const attendance = await this.prisma.attendance.findMany({
-          where: {
-            employeeId: employee.id,
-            date: { gte: monthStart, lte: monthEnd },
-          },
-        });
-
-        if (attendance.length > 0) {
-          const present = attendance.filter(a => a.status === 'PRESENT').length;
-          const halfDays = attendance.filter(a => a.status === 'HALF_DAY').length;
-          const attendanceScore = this.calculateAttendanceScore(present, halfDays, workingDays);
-          const score = this.calculateOverallScore(attendanceScore, 80, 85);
-
-          totalScore += score;
-          totalAttendanceRate += attendanceScore;
-          validEmployees++;
-        }
+      for (const summary of attendanceByEmployee.values()) {
+        if (summary.total <= 0) continue;
+        const attendanceScore = this.calculateAttendanceScore(summary.present, summary.halfDay, workingDays);
+        const score = this.calculateOverallScore(attendanceScore, 80, 85);
+        totalScore += score;
+        totalAttendanceRate += attendanceScore;
+        validEmployees++;
       }
 
       trends.push({
         date: format(monthStart, 'MMM yyyy'),
         score: validEmployees > 0 ? Math.round(totalScore / validEmployees) : 0,
         attendanceRate: validEmployees > 0 ? Math.round(totalAttendanceRate / validEmployees) : 0,
-        employeeCount: employees.length,
+        employeeCount,
       });
     }
 
@@ -539,16 +589,17 @@ export class PerformanceService {
       include: { user: true, role: true },
     });
 
-    const performances: EmployeePerformanceDto[] = [];
-
-    for (const employee of employees) {
-      try {
-        const performance = await this.getEmployeePerformance(employee.id, filters);
-        performances.push(performance);
-      } catch (e) {
-        // Skip employees with errors
-      }
-    }
+    const performances = await this.mapInBatches(
+      employees,
+      8,
+      async (employee) => {
+        try {
+          return await this.getEmployeePerformance(employee.id, filters);
+        } catch {
+          return null;
+        }
+      },
+    );
 
     return performances.sort((a, b) => b.overallScore - a.overallScore);
   }
