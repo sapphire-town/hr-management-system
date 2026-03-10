@@ -15,6 +15,7 @@ export class ObjectStorageService {
     const provider = (this.configService.get<string>('STORAGE_PROVIDER') || 'local').toLowerCase();
     this.enabled = provider === 'minio' || provider === 's3';
     this.bucket = this.configService.get<string>('S3_BUCKET') || 'hr-management-files';
+    this.logger.log(`Storage provider set to: ${this.enabled ? 'MinIO/S3' : 'Local'}`);
 
     if (!this.enabled) {
       this.s3Client = null;
@@ -26,14 +27,14 @@ export class ObjectStorageService {
     const accessKeyId = this.configService.get<string>('S3_ACCESS_KEY');
     const secretAccessKey = this.configService.get<string>('S3_SECRET_KEY');
 
-    if (!endpoint || !accessKeyId || !secretAccessKey) {
+    if (!region || (provider === 'minio' && (!endpoint || !accessKeyId || !secretAccessKey))) {
       this.logger.warn('S3/MinIO variables missing. Falling back to local storage.');
       this.enabled = false;
       this.s3Client = null;
       return;
     }
 
-    this.s3Client = new S3Client({
+    if (provider === 'minio') {this.s3Client = new S3Client({
       endpoint,
       region,
       forcePathStyle: true,
@@ -41,7 +42,12 @@ export class ObjectStorageService {
         accessKeyId,
         secretAccessKey,
       },
+    });} else if (provider === 's3') {
+      this.s3Client = new S3Client({
+      region,
     });
+    }
+    
   }
 
   isRemoteStorageEnabled(): boolean {
