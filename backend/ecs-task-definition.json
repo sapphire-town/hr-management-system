@@ -28,7 +28,7 @@
         { "name": "EMAIL_USER", "value": "techcareerplab@gmail.com" },
         { "name": "EMAIL_PASSWORD", "value": "kotr oglc ycyl vezf" },
         { "name": "EMAIL_FROM", "value": "techcareerplab@gmail.com" },
-        { "name": "FRONTEND_URL", "value": "http://localhost:3000" }
+        { "name": "FRONTEND_URL", "value": "https://cpb-hr.vercel.app" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
