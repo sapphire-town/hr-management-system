@@ -25,6 +25,7 @@ import { DailyReportModule } from './daily-report/daily-report.module';
 import { TicketModule } from './ticket/ticket.module';
 import { HiringModule } from './hiring/hiring.module';
 import { RewardModule } from './reward/reward.module';
+import { StorageModule } from './common/storage/storage.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { RewardModule } from './reward/reward.module';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    StorageModule,
     AuthModule,
     NotificationModule,
     DashboardModule,

@@ -18,8 +18,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
-import { createReadStream, existsSync, mkdirSync } from 'fs';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -34,21 +33,7 @@ import {
 } from './dto/document.dto';
 import { CreateDocumentTemplateDto, GenerateDocumentsDto } from './dto/document-template.dto';
 
-// Ensure uploads directory exists
-const uploadsDir = './uploads/documents';
-if (!existsSync(uploadsDir)) {
-  mkdirSync(uploadsDir, { recursive: true });
-}
-
-
-const storage = diskStorage({
-  destination: './uploads/documents',
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = file.originalname.split('.').pop();
-    cb(null, `${uniqueSuffix}.${ext}`);
-  },
-});
+const storage = memoryStorage();
 
 
 @ApiTags('Documents')
@@ -73,11 +58,10 @@ export class DocumentController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const document = await this.documentService.downloadDocument(id, req.user.employeeId);
-    const filePath = this.documentService.resolveReadableFilePath(document.filePath);
-    if (!filePath) {
+    const fileBuffer = await this.documentService.getStoredFileBuffer(document.filePath);
+    if (!fileBuffer) {
       throw new BadRequestException('File not found on server');
     }
-    const file = createReadStream(filePath);
     const ext = document.fileName.split('.').pop()?.toLowerCase();
     const contentTypes: Record<string, string> = {
       html: 'text/html',
@@ -88,7 +72,7 @@ export class DocumentController {
       'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
       'Content-Disposition': `attachment; filename="${document.fileName}"`,
     });
-    return new StreamableFile(file);
+    return new StreamableFile(fileBuffer);
   }
 
   // Document verification endpoints (for employees to upload)
@@ -107,8 +91,9 @@ export class DocumentController {
     return this.documentService.uploadForVerification(
       req.user.employeeId,
       dto,
-      file.path,
+      file.buffer,
       file.originalname,
+      file.mimetype,
     );
   }
 
@@ -155,8 +140,9 @@ export class DocumentController {
     return this.documentService.releaseDocument(
       dto,
       req.user.employeeId,
-      file.path,
+      file.buffer,
       file.originalname,
+      file.mimetype,
     );
   }
 
@@ -176,8 +162,9 @@ export class DocumentController {
     return this.documentService.bulkReleaseDocument(
       dto,
       req.user.employeeId,
-      file.path,
+      file.buffer,
       file.originalname,
+      file.mimetype,
     );
   }
 
@@ -196,12 +183,10 @@ export class DocumentController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const document = await this.documentService.getVerificationDocumentForView(id);
-    const filePath = this.documentService.resolveReadableFilePath(document.filePath);
-    if (!filePath) {
+    const fileBuffer = await this.documentService.getStoredFileBuffer(document.filePath);
+    if (!fileBuffer) {
       throw new BadRequestException('File not found on server');
     }
-
-    const file = createReadStream(filePath);
     const ext = document.fileName.split('.').pop()?.toLowerCase();
 
     // Set content type based on file extension
@@ -217,7 +202,7 @@ export class DocumentController {
       'Content-Type': contentTypes[ext || ''] || 'application/octet-stream',
       'Content-Disposition': `inline; filename="${document.fileName}"`,
     });
-    return new StreamableFile(file);
+    return new StreamableFile(fileBuffer);
   }
 
   @Patch('verification/:id/verify')
