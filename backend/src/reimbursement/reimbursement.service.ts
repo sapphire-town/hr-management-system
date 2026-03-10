@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { ObjectStorageService } from '../common/storage/storage.service';
 import { NotificationService } from '../notification/notification.service';
 import {
   CreateReimbursementDto,
@@ -13,18 +14,47 @@ import {
   ReimbursementFilterDto,
 } from './dto/reimbursement.dto';
 import { ReimbursementStatus, UserRole } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class ReimbursementService {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
+    private objectStorage: ObjectStorageService,
   ) {}
+
+  private normalizeReceiptPath(receiptPath: string): string {
+    return receiptPath.replace(/^\/+/, '').replace(/\\/g, '/');
+  }
+
+  async getReceiptBuffer(receiptPath: string): Promise<Buffer | null> {
+    const normalized = this.normalizeReceiptPath(receiptPath);
+    const fromStorage = await this.objectStorage.getBuffer(normalized);
+    if (fromStorage) {
+      return fromStorage;
+    }
+
+    const fileName = path.basename(normalized);
+    const localCandidates = [
+      path.join(process.cwd(), normalized),
+      path.join(process.cwd(), 'uploads', 'receipts', fileName),
+    ];
+    for (const filePath of localCandidates) {
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath);
+      }
+    }
+    return null;
+  }
 
   async createClaim(
     employeeId: string,
     dto: CreateReimbursementDto,
-    receiptPath: string,
+    receiptBuffer: Buffer,
+    receiptOriginalName: string,
+    receiptMimeType?: string,
   ) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
@@ -38,6 +68,13 @@ export class ReimbursementService {
     const hasManager = !!employee.managerId;
     const initialStatus: ReimbursementStatus = hasManager ? 'SUBMITTED' : 'PENDING_HR';
 
+    const objectKey = this.objectStorage.buildObjectKey('receipts', receiptOriginalName);
+    const storedReceiptPath = await this.objectStorage.uploadBuffer(
+      objectKey,
+      receiptBuffer,
+      receiptMimeType,
+    );
+
     const claim = await this.prisma.reimbursement.create({
       data: {
         employeeId,
@@ -45,7 +82,7 @@ export class ReimbursementService {
         amount: dto.amount,
         expenseDate: new Date(dto.expenseDate),
         description: dto.description,
-        receiptPath,
+        receiptPath: storedReceiptPath,
         status: initialStatus,
         managerApproved: !hasManager,
       },

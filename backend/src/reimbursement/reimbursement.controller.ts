@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  BadRequestException,
   Body,
   Param,
   Query,
@@ -16,9 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { Response } from 'express';
-import { createReadStream } from 'fs';
-import { join } from 'path';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -31,14 +30,7 @@ import {
   ReimbursementFilterDto,
 } from './dto/reimbursement.dto';
 
-const storage = diskStorage({
-  destination: './uploads/receipts',
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = file.originalname.split('.').pop();
-    cb(null, `receipt-${uniqueSuffix}.${ext}`);
-  },
-});
+const storage = memoryStorage();
 
 @ApiTags('Reimbursements')
 @ApiBearerAuth()
@@ -58,12 +50,14 @@ export class ReimbursementController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
-      throw new Error('Receipt is required');
+      throw new BadRequestException('Receipt is required');
     }
     return this.reimbursementService.createClaim(
       req.user.employeeId,
       dto,
-      file.path,
+      file.buffer,
+      file.originalname,
+      file.mimetype,
     );
   }
 
@@ -92,13 +86,24 @@ export class ReimbursementController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const claim = await this.reimbursementService.getClaimById(id);
-    const file = createReadStream(join(process.cwd(), claim.receiptPath));
+    const fileBuffer = await this.reimbursementService.getReceiptBuffer(claim.receiptPath);
+    if (!fileBuffer) {
+      throw new BadRequestException('Receipt file not found');
+    }
     const ext = claim.receiptPath.split('.').pop();
+    const contentTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      gif: 'image/gif',
+    };
     res.set({
-      'Content-Type': `image/${ext}`,
+      'Content-Type': contentTypes[(ext || '').toLowerCase()] || 'application/octet-stream',
       'Content-Disposition': `inline; filename="receipt-${id}.${ext}"`,
     });
-    return new StreamableFile(file);
+    return new StreamableFile(fileBuffer);
   }
 
   // Manager endpoints

@@ -6,15 +6,15 @@ import {
   Body,
   Param,
   Res,
+  BadRequestException,
   UseGuards,
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { Response } from 'express';
-import { join, extname } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { extname } from 'path';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -29,19 +29,7 @@ import {
   UpdatePayslipTemplateDto,
 } from './dto/settings.dto';
 
-const logoStorage = diskStorage({
-  destination: (_req, _file, cb) => {
-    const uploadPath = join(process.cwd(), 'uploads', 'company');
-    if (!existsSync(uploadPath)) {
-      mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (_req, file, cb) => {
-    const ext = extname(file.originalname);
-    cb(null, `logo-${Date.now()}${ext}`);
-  },
-});
+const logoStorage = memoryStorage();
 
 interface JwtPayload {
   sub: string;
@@ -139,19 +127,36 @@ export class SettingsController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: JwtPayload,
   ) {
-    const filePath = `/uploads/company/${file.filename}`;
-    await this.settingsService.uploadLogo(filePath, user.sub);
+    if (!file) {
+      throw new BadRequestException('Logo file is required');
+    }
+    const fileName = `logo-${Date.now()}${extname(file.originalname)}`;
+    const filePath = await this.settingsService.uploadLogo(
+      file.buffer,
+      fileName,
+      file.mimetype,
+      user.sub,
+    );
     return { logoUrl: filePath };
   }
 
   @Get('logo/:filename')
   @ApiOperation({ summary: 'Serve company logo file' })
   async serveLogo(@Param('filename') filename: string, @Res() res: Response) {
-    const filePath = join(process.cwd(), 'uploads', 'company', filename);
-    if (!existsSync(filePath)) {
+    const fileBuffer = await this.settingsService.getLogoBuffer(filename);
+    if (!fileBuffer) {
       return res.status(404).json({ message: 'Logo not found' });
     }
-    return res.sendFile(filePath);
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const contentTypes: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      svg: 'image/svg+xml',
+      webp: 'image/webp',
+    };
+    res.setHeader('Content-Type', contentTypes[ext] || 'application/octet-stream');
+    return res.send(fileBuffer);
   }
 
   @Patch('payslip-template')

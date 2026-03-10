@@ -34,8 +34,29 @@ npm run start:dev
 
 On first upload, backend auto-creates the bucket if it does not exist.
 
+## 4) Verify health endpoints
+
+- `GET /api/health`
+- `GET /api/health/storage`
+
+Expected storage response should show:
+- `"ok": true`
+- `"provider": "minio/s3"` (when `STORAGE_PROVIDER=minio`)
+- your configured bucket name
+
+## Migrated File Flows
+
+- Documents:
+  - verification upload/view
+  - released document download
+  - generated template PDFs
+- Reimbursements:
+  - receipt upload/download
+- Daily Reports:
+  - attachment upload/download
+- Settings:
+  - company logo upload/serve
+
 ## Notes
 
 - Existing old records that point to local files are still read with local fallback.
-- New document uploads/releases/verification files are stored in MinIO.
-

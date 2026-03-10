@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { ObjectStorageService } from '../common/storage/storage.service';
 import { NotificationService } from '../notification/notification.service';
 import {
   UpdateCompanySettingsDto,
@@ -7,6 +8,8 @@ import {
   UpdateNotificationPreferencesDto,
   UpdatePayslipTemplateDto,
 } from './dto/settings.dto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const DEFAULT_SETTINGS_ID = 'default-company-settings';
 
@@ -15,6 +18,7 @@ export class SettingsService {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
+    private objectStorage: ObjectStorageService,
   ) {}
 
   /**
@@ -272,15 +276,39 @@ export class SettingsService {
     };
   }
 
-  async uploadLogo(filePath: string, updatedBy: string) {
+  async uploadLogo(
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string | undefined,
+    updatedBy: string,
+  ) {
     const settings = await this.getSettings();
-    return this.prisma.companySettings.update({
+    const objectKey = `company/${fileName}`;
+    await this.objectStorage.uploadBuffer(objectKey, fileBuffer, mimeType);
+    const logoPath = `/uploads/company/${fileName}`;
+
+    await this.prisma.companySettings.update({
       where: { id: settings.id },
       data: {
-        companyLogo: filePath,
+        companyLogo: logoPath,
         updatedBy,
       },
     });
+    return logoPath;
+  }
+
+  async getLogoBuffer(filename: string): Promise<Buffer | null> {
+    const objectKey = `company/${filename}`;
+    const fromStorage = await this.objectStorage.getBuffer(objectKey);
+    if (fromStorage) {
+      return fromStorage;
+    }
+
+    const localPath = path.join(process.cwd(), 'uploads', 'company', filename);
+    if (fs.existsSync(localPath)) {
+      return fs.readFileSync(localPath);
+    }
+    return null;
   }
 
   async updatePayslipTemplate(dto: UpdatePayslipTemplateDto, updatedBy: string) {

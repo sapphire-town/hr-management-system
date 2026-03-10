@@ -26,6 +26,7 @@ import { TicketModule } from './ticket/ticket.module';
 import { HiringModule } from './hiring/hiring.module';
 import { RewardModule } from './reward/reward.module';
 import { StorageModule } from './common/storage/storage.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { StorageModule } from './common/storage/storage.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     StorageModule,
+    HealthModule,
     AuthModule,
     NotificationModule,
     DashboardModule,

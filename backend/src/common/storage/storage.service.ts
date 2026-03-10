@@ -48,12 +48,37 @@ export class ObjectStorageService {
     return this.enabled && !!this.s3Client;
   }
 
+  getStorageProvider(): string {
+    return this.isRemoteStorageEnabled() ? 'minio/s3' : 'local';
+  }
+
+  getBucketName(): string {
+    return this.bucket;
+  }
+
   async ensureBucket(): Promise<void> {
     if (!this.isRemoteStorageEnabled()) return;
     try {
       await this.s3Client!.send(new HeadBucketCommand({ Bucket: this.bucket }));
     } catch {
       await this.s3Client!.send(new CreateBucketCommand({ Bucket: this.bucket }));
+    }
+  }
+
+  async checkBucketAccess(): Promise<{ ok: boolean; message: string }> {
+    if (!this.isRemoteStorageEnabled()) {
+      return { ok: true, message: 'Local storage mode enabled' };
+    }
+
+    try {
+      await this.ensureBucket();
+      await this.s3Client!.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return { ok: true, message: 'MinIO/S3 bucket is reachable' };
+    } catch (error: any) {
+      return {
+        ok: false,
+        message: error?.message || 'Failed to access MinIO/S3 bucket',
+      };
     }
   }
 
