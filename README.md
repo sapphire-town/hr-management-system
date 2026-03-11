@@ -1,6 +1,6 @@
 # HR Management & Performance Tracking System
 
-A comprehensive workforce management platform designed to streamline HR operations, employee performance tracking, and organizational workflows.
+A comprehensive workforce management platform designed to streamline HR operations, employee performance tracking, and organizational workflows. 
 
 ## Features
 

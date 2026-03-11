@@ -8,6 +8,10 @@ COPY prisma ./prisma/
 
 RUN npm ci
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Generate Prisma client
 RUN npx prisma generate
 
