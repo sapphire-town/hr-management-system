@@ -10,6 +10,7 @@ export class ObjectStorageService {
   private readonly bucket: string;
   private enabled: boolean;
   private readonly s3Client: S3Client | null;
+  private bucketReadyPromise: Promise<void> | null = null;
 
   constructor(private readonly configService: ConfigService) {
     const provider = (this.configService.get<string>('STORAGE_PROVIDER') || 'local').toLowerCase();
@@ -64,10 +65,44 @@ export class ObjectStorageService {
 
   async ensureBucket(): Promise<void> {
     if (!this.isRemoteStorageEnabled()) return;
+    if (this.bucketReadyPromise) {
+      return this.bucketReadyPromise;
+    }
+
+    this.bucketReadyPromise = this.ensureBucketInternal();
+    try {
+      await this.bucketReadyPromise;
+    } catch (error) {
+      this.bucketReadyPromise = null;
+      throw error;
+    }
+  }
+
+  private async ensureBucketInternal(): Promise<void> {
     try {
       await this.s3Client!.send(new HeadBucketCommand({ Bucket: this.bucket }));
-    } catch {
+      return;
+    } catch (error: any) {
+      const errorName = error?.name || '';
+      const statusCode = error?.$metadata?.httpStatusCode;
+      const isMissingBucket =
+        errorName === 'NotFound' ||
+        errorName === 'NoSuchBucket' ||
+        statusCode === 404;
+
+      if (!isMissingBucket) {
+        throw error;
+      }
+    }
+
+    try {
       await this.s3Client!.send(new CreateBucketCommand({ Bucket: this.bucket }));
+    } catch (error: any) {
+      const errorName = error?.name || '';
+      if (errorName === 'BucketAlreadyOwnedByYou' || errorName === 'BucketAlreadyExists') {
+        return;
+      }
+      throw error;
     }
   }
 
