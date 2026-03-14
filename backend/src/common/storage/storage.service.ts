@@ -7,15 +7,21 @@ import * as path from 'path';
 @Injectable()
 export class ObjectStorageService {
   private readonly logger = new Logger(ObjectStorageService.name);
+  private readonly provider: 'local' | 'minio' | 's3';
   private readonly bucket: string;
   private enabled: boolean;
   private readonly s3Client: S3Client | null;
   private bucketReadyPromise: Promise<void> | null = null;
+  private readonly autoCreateBucket: boolean;
 
   constructor(private readonly configService: ConfigService) {
     const provider = (this.configService.get<string>('STORAGE_PROVIDER') || 'local').toLowerCase();
+    this.provider = provider === 'minio' || provider === 's3' ? provider : 'local';
     this.enabled = provider === 'minio' || provider === 's3';
     this.bucket = this.configService.get<string>('S3_BUCKET') || 'hr-management-files';
+    this.autoCreateBucket =
+      (this.configService.get<string>('S3_AUTO_CREATE_BUCKET') || '').toLowerCase() === 'true' ||
+      this.provider === 'minio';
     this.logger.log(`Storage provider set to: ${this.enabled ? 'MinIO/S3' : 'Local'}`);
 
     if (!this.enabled) {
@@ -56,7 +62,7 @@ export class ObjectStorageService {
   }
 
   getStorageProvider(): string {
-    return this.isRemoteStorageEnabled() ? 'minio/s3' : 'local';
+    return this.isRemoteStorageEnabled() ? this.provider : 'local';
   }
 
   getBucketName(): string {
@@ -65,6 +71,9 @@ export class ObjectStorageService {
 
   async ensureBucket(): Promise<void> {
     if (!this.isRemoteStorageEnabled()) return;
+    if (!this.autoCreateBucket) {
+      return;
+    }
     if (this.bucketReadyPromise) {
       return this.bucketReadyPromise;
     }
@@ -79,6 +88,10 @@ export class ObjectStorageService {
   }
 
   private async ensureBucketInternal(): Promise<void> {
+    if (!this.autoCreateBucket) {
+      return;
+    }
+
     try {
       await this.s3Client!.send(new HeadBucketCommand({ Bucket: this.bucket }));
       return;
@@ -91,8 +104,17 @@ export class ObjectStorageService {
         statusCode === 404;
 
       if (!isMissingBucket) {
+        this.logger.error(
+          `Bucket access check failed for "${this.bucket}" (${this.provider}): ${errorName || 'UnknownError'} ${error?.message || ''}`.trim(),
+        );
         throw error;
       }
+    }
+
+    if (!this.autoCreateBucket) {
+      throw new Error(
+        `Bucket "${this.bucket}" was not found and auto-creation is disabled for provider "${this.provider}". Create the bucket manually or enable S3_AUTO_CREATE_BUCKET=true.`,
+      );
     }
 
     try {
@@ -102,6 +124,9 @@ export class ObjectStorageService {
       if (errorName === 'BucketAlreadyOwnedByYou' || errorName === 'BucketAlreadyExists') {
         return;
       }
+      this.logger.error(
+        `Bucket creation failed for "${this.bucket}" (${this.provider}): ${errorName || 'UnknownError'} ${error?.message || ''}`.trim(),
+      );
       throw error;
     }
   }
@@ -112,9 +137,18 @@ export class ObjectStorageService {
     }
 
     try {
-      await this.ensureBucket();
-      await this.s3Client!.send(new HeadBucketCommand({ Bucket: this.bucket }));
-      return { ok: true, message: 'MinIO/S3 bucket is reachable' };
+      if (this.autoCreateBucket) {
+        await this.ensureBucket();
+        await this.s3Client!.send(new HeadBucketCommand({ Bucket: this.bucket }));
+        return { ok: true, message: 'MinIO/S3 bucket is reachable' };
+      }
+
+      // In AWS S3 deployments the app often has object-level access only.
+      // Skip HeadBucket in that case and report configuration status instead.
+      return {
+        ok: true,
+        message: 'S3 bucket checks skipped because auto-create is disabled; verify with a real upload if needed',
+      };
     } catch (error: any) {
       return {
         ok: false,
