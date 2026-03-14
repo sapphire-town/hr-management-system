@@ -24,6 +24,7 @@ S3_REGION=us-east-1
 S3_ACCESS_KEY=minioadmin
 S3_SECRET_KEY=minioadmin
 S3_BUCKET=hr-management-files
+S3_AUTO_CREATE_BUCKET=true
 ```
 
 ## 3) Restart backend
@@ -43,6 +44,20 @@ Expected storage response should show:
 - `"ok": true`
 - `"provider": "minio/s3"` (when `STORAGE_PROVIDER=minio`)
 - your configured bucket name
+
+## AWS S3 note
+
+For AWS S3, prefer:
+
+```env
+STORAGE_PROVIDER=s3
+S3_REGION=us-east-1
+S3_BUCKET=your-existing-bucket
+S3_AUTO_CREATE_BUCKET=false
+```
+
+Create the bucket in AWS manually first. Do not rely on app startup to create it.
+The app will not call `HeadBucket` or `CreateBucket` at runtime in this mode.
 
 ## Migrated File Flows
 
