@@ -30,7 +30,7 @@ export class ObjectStorageService {
     }
 
     const endpoint = this.configService.get<string>('S3_ENDPOINT');
-    const region = this.configService.get<string>('AWS_REGION') || 'ap-south-1';
+    const region = this.configService.get<string>('S3_REGION') || this.configService.get<string>('AWS_REGION') || 'ap-south-1';
     const accessKeyId = this.configService.get<string>('S3_ACCESS_KEY');
     const secretAccessKey = this.configService.get<string>('S3_SECRET_KEY');
 

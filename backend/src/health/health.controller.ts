@@ -8,7 +8,13 @@ export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Basic health check for database and storage' })
+  @ApiOperation({ summary: 'Lightweight liveness check' })
+  getPing() {
+    return { ok: true, timestamp: new Date().toISOString() };
+  }
+
+  @Get('full')
+  @ApiOperation({ summary: 'Full health check for database and storage' })
   async getHealth() {
     return this.healthService.getBasicHealth();
   }

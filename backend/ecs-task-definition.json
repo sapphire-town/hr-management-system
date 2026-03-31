@@ -5,10 +5,11 @@
   "cpu": "512",
   "memory": "1024",
   "executionRoleArn": "arn:aws:iam::469049066557:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::469049066557:role/ecsTaskRole-email",
   "containerDefinitions": [
     {
       "name": "hr-backend",
-      "image": "469049066557.dkr.ecr.ap-south-1.amazonaws.com/hr-backend:latest",
+      "image": "469049066557.dkr.ecr.ap-south-1.amazonaws.com/cpb/hr-management-backend:58dc0f4d897f9ed00810bb24f8f8727b541c7a07",
       "essential": true,
       "portMappings": [
         {
@@ -19,16 +20,18 @@
       "environment": [
         { "name": "PORT", "value": "3001" },
         { "name": "NODE_ENV", "value": "production" },
+        { "name": "AWS_REGION", "value": "ap-south-1" },
         { "name": "DATABASE_URL", "value": "postgresql://neondb_owner:npg_yt0DUZTKMIz4@ep-mute-firefly-a1qb4w5s-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" },
-        { "name": "JWT_SECRET", "value": "your-super-secret-jwt-key-change-this-in-production" },
+        { "name": "JWT_SECRET", "value": "26c74a9effd32d30d439d85b0f3360c42318a9c20b622d595a3fc2935ed4c5a1433e1df1c6d17341ede8bb44194f3098b5178909250748f19f8325ea3fbc734e" },
         { "name": "JWT_EXPIRATION", "value": "7d" },
-        { "name": "EMAIL_HOST", "value": "smtp.gmail.com" },
-        { "name": "EMAIL_PORT", "value": "587" },
-        { "name": "EMAIL_SECURE", "value": "false" },
-        { "name": "EMAIL_USER", "value": "techcareerplab@gmail.com" },
-        { "name": "EMAIL_PASSWORD", "value": "kotr oglc ycyl vezf" },
-        { "name": "EMAIL_FROM", "value": "techcareerplab@gmail.com" },
-        { "name": "FRONTEND_URL", "value": "https://cpb-hr.vercel.app" }
+        { "name": "EMAIL_PROVIDER", "value": "ses" },
+        { "name": "EMAIL_FROM", "value": "techcareerplanb@gmail.com" },
+        { "name": "FRONTEND_URL", "value": "https://cpb-hr.vercel.app" },
+        { "name": "FILE_UPLOAD_PATH", "value": "./uploads" },
+        { "name": "MAX_FILE_SIZE", "value": "5242880" },
+        { "name": "STORAGE_PROVIDER", "value": "s3" },
+        { "name": "S3_REGION", "value": "ap-south-1" },
+        { "name": "S3_BUCKET", "value": "cpb-hr-files" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
@@ -41,9 +44,9 @@
       "healthCheck": {
         "command": ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"],
         "interval": 30,
-        "timeout": 5,
+        "timeout": 10,
         "retries": 3,
-        "startPeriod": 100
+        "startPeriod": 120
       }
     }
   ]
