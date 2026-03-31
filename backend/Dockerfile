@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
     openssl \
     ca-certificates \
-    openssl \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Tell Puppeteer to use installed Chromium instead of downloading its own
