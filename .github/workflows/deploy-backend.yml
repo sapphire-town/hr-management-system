@@ -1,0 +1,95 @@
+name: Build and Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: cpb/hr-management-backend
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push to ECR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            AWS_REGION=${{ env.AWS_REGION }}
+            AWS_ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID }}
+            IMAGE_TAG=${{ github.sha }}
+            BACKEND_REPO="${{ env.ECR_REPOSITORY }}"
+            
+            BACKEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:$IMAGE_TAG"
+            
+            # Login to ECR
+            aws ecr get-login-password --region "$AWS_REGION" | \
+              docker login --username AWS --password-stdin \
+              "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+            
+            # Pull latest
+            docker pull "$BACKEND_IMAGE"
+            
+            # Stop and remove old container
+            docker rm -f hr-backend || true
+            
+            # Create network if not exists
+            docker network create hr-net || true
+            
+            # Run new container
+            docker run -d \
+              --name hr-backend \
+              --restart unless-stopped \
+              --network hr-net \
+              --env-file ~/.env \
+              -p 3001:3001 \
+              "$BACKEND_IMAGE"
+            
+            echo "Backend deployed successfully"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "Build or deployment failed. Check logs above."
