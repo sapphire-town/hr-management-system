@@ -398,8 +398,9 @@ export class NotificationService {
           subject,
           html,
         });
+        this.logger.log(`Promotion email sent to ${employee.email}`);
       } catch (emailError) {
-        console.error('Failed to send promotion email:', emailError);
+        this.logger.error(`Failed to send promotion email to ${employee.email}: ${emailError?.message}`, emailError?.stack);
       }
 
       // Create in-app notification
