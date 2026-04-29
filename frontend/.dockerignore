@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+.git
+.gitignore
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+Dockerfile
+.dockerignore
+.env
+.env.*
+coverage
+.vscode
+.idea
+*.md
