@@ -70,20 +70,6 @@ jobs:
             aws ecr get-login-password --region "$AWS_REGION" | \
               docker login --username AWS --password-stdin \
               "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-
-            # Reclaim disk space before pulling large images
-            echo "Disk usage before cleanup:"
-            df -h
-            docker system df || true
-
-            docker container prune -f || true
-            docker image prune -af || true
-            docker builder prune -af || true
-            docker volume prune -f || true
-
-            echo "Disk usage after cleanup:"
-            df -h
-            docker system df || true
             
             # Pull latest
             docker pull "$BACKEND_IMAGE"
