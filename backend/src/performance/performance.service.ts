@@ -198,7 +198,7 @@ export class PerformanceService {
     const totalTickets = tickets.length;
     const taskCompletionScore = totalTickets > 0
       ? Math.round((resolvedTickets / totalTickets) * 100)
-      : 85; // Default score if no tickets
+      : 0; // Default score if no tickets
 
     const attendanceScore = this.calculateAttendanceScore(presentDays, halfDays, workingDays);
     const leaveScore = this.calculateLeaveScore(leaveDays, workingDays);
@@ -571,7 +571,7 @@ export class PerformanceService {
 
       const attendanceScore = this.calculateAttendanceScore(present, halfDays, workingDays);
       const leaveScore = this.calculateLeaveScore(leaves, workingDays);
-      const score = this.calculateOverallScore(attendanceScore, leaveScore, 85);
+      const score = this.calculateOverallScore(attendanceScore, leaveScore, 0);
 
       trends.push({
         date: format(monthStart, 'MMM yyyy'),

@@ -116,7 +116,6 @@ export class EmployeeService {
       );
     } catch (error) {
       console.error('Failed to send welcome email:', error);
-      // Don't fail the employee creation if email fails
     }
 
     // Notify HR to release onboarding documents (offer letter, contract, etc.)
@@ -131,7 +130,6 @@ export class EmployeeService {
       });
     } catch (error) {
       console.error('Failed to notify HR about new employee:', error);
-      // Don't fail the employee creation if notification fails
     }
 
     return result;
