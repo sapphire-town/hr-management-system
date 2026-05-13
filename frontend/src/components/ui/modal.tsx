@@ -106,7 +106,7 @@ const contentStyle: React.CSSProperties = {
   left: '50%',
   top: '50%',
   transform: 'translate(-50%, -50%)',
-  width: '100%',
+  width: 'calc(100% - 32px)',
   maxWidth: '500px',
   backgroundColor: '#ffffff',
   borderRadius: '16px',

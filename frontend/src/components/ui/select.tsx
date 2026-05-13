@@ -10,12 +10,16 @@ interface SelectContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
   triggerRef: React.RefObject<HTMLButtonElement>;
+  labelRegistry: Record<string, string>;
+  registerLabel: (value: string, label: string) => void;
 }
 
 const SelectContext = React.createContext<SelectContextValue>({
   open: false,
   setOpen: () => {},
   triggerRef: { current: null },
+  labelRegistry: {},
+  registerLabel: () => {},
 });
 
 const useSelect = () => React.useContext(SelectContext);
@@ -29,9 +33,14 @@ interface SelectProps {
 function Select({ value, onValueChange, children }: SelectProps) {
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const [labelRegistry, setLabelRegistry] = React.useState<Record<string, string>>({});
+
+  const registerLabel = React.useCallback((itemValue: string, label: string) => {
+    setLabelRegistry(prev => prev[itemValue] === label ? prev : { ...prev, [itemValue]: label });
+  }, []);
 
   return (
-    <SelectContext.Provider value={{ value, onValueChange, open, setOpen, triggerRef }}>
+    <SelectContext.Provider value={{ value, onValueChange, open, setOpen, triggerRef, labelRegistry, registerLabel }}>
       {children}
     </SelectContext.Provider>
   );
@@ -39,8 +48,9 @@ function Select({ value, onValueChange, children }: SelectProps) {
 
 const SelectGroup = ({ children }: { children: React.ReactNode }) => <>{children}</>;
 const SelectValue = ({ placeholder }: { placeholder?: string }) => {
-  const { value } = useSelect();
-  return <span>{value || placeholder || 'Select...'}</span>;
+  const { value, labelRegistry } = useSelect();
+  const display = value ? (labelRegistry[value] ?? value) : undefined;
+  return <span>{display || placeholder || 'Select...'}</span>;
 };
 
 const triggerStyle: React.CSSProperties = {
@@ -104,7 +114,7 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
 SelectTrigger.displayName = 'SelectTrigger';
 
 const contentStyle: React.CSSProperties = {
-  position: 'absolute',
+  position: 'fixed',
   zIndex: 10001,
   maxHeight: '300px',
   minWidth: '8rem',
@@ -218,9 +228,14 @@ interface SelectItemProps {
 }
 
 const SelectItem = ({ value, children, disabled }: SelectItemProps) => {
-  const { value: selectedValue, onValueChange, setOpen } = useSelect();
+  const { value: selectedValue, onValueChange, setOpen, registerLabel } = useSelect();
   const [hovered, setHovered] = React.useState(false);
   const isSelected = selectedValue === value;
+
+  const label = typeof children === 'string' ? children : React.Children.toArray(children).map(c => typeof c === 'string' ? c : '').join('');
+  React.useEffect(() => {
+    registerLabel(value, label);
+  }, [value, label, registerLabel]);
 
   const handleClick = () => {
     if (disabled) return;

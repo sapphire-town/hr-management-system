@@ -14,9 +14,9 @@ const ToastViewport = React.forwardRef<
     ref={ref}
     style={{
       position: 'fixed',
-      bottom: 0,
+      top: 0,
       right: 0,
-      zIndex: 100,
+      zIndex: 20000,
       display: 'flex',
       maxHeight: '100vh',
       width: '100%',
