@@ -17,6 +17,7 @@ import { StatsCard, StatsGrid } from '@/components/dashboard/stats-card';
 import { ActivityFeed, type Activity } from '@/components/dashboard/activity-feed';
 import { QuickActions } from '@/components/dashboard/quick-actions';
 import { performanceAPI, dashboardAPI } from '@/lib/api-client';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh';
 
 interface PerformanceData {
@@ -251,8 +252,8 @@ export function EmployeeDashboard() {
         />
         <StatsCard
           title="Performance Score"
-          value={`${performance?.overallScore || 0}%`}
-          trend={performance?.trend === 'up' ? { value: performance.overallScore - performance.previousScore, label: 'from last month' } : undefined}
+          value={`${performance?.taskCompletionScore || 0}%`}
+          trend={performance?.trend === 'up' ? { value: performance.taskCompletionScore - performance.previousScore, label: 'from last month' } : undefined}
           icon={TrendingUp}
         />
         <StatsCard
@@ -272,26 +273,25 @@ export function EmployeeDashboard() {
         {/* Performance Chart */}
         <div style={styles.card}>
           <h3 style={styles.cardTitle}>My Performance Trend</h3>
-          {performanceHistory.length > 0 ? (
-            <div style={{ height: '256px', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', padding: '0 16px' }}>
-              {performanceHistory.map((h, idx) => (
-                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                  <div
-                    style={{
-                      width: '40px',
-                      backgroundColor: '#7c3aed',
-                      borderRadius: '4px 4px 0 0',
-                      height: `${Math.max(h.score * 2, 10)}px`,
-                      transition: 'height 0.3s',
-                    }}
-                  />
-                  <span style={{ fontSize: '12px', color: '#6b7280' }}>{h.date}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={styles.emptyChart}>No performance history available</div>
-          )}
+          <div style={{ height: '256px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={performanceHistory} margin={{ top: 16, right: 8, left: -24, bottom: 0 }} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                <Tooltip
+                  cursor={{ fill: '#f5f3ff' }}
+                  formatter={(value: number) => [`${value}%`, 'Performance']}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13 }}
+                />
+                <Bar dataKey="score" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                  {performanceHistory.map((h, idx) => (
+                    <Cell key={idx} fill={h.score > 0 ? '#7c3aed' : '#e5e7eb'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Score Breakdown */}

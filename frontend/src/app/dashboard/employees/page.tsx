@@ -34,6 +34,13 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/auth-store';
 import { employeeAPI, roleAPI, performanceAPI, documentAPI } from '@/lib/api-client';
@@ -129,7 +136,6 @@ export default function EmployeesPage() {
   const [loadingPerformance, setLoadingPerformance] = React.useState(false);
   const [credentials, setCredentials] = React.useState<{ email: string; password: string } | null>(null);
   const [copiedField, setCopiedField] = React.useState<string | null>(null);
-  const [actionMenuOpen, setActionMenuOpen] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [searchById, setSearchById] = React.useState('');
   const [searchingById, setSearchingById] = React.useState(false);
@@ -529,7 +535,6 @@ const resetFormData = React.useCallback(() => {
       setDetailedEmployee(response.data);
       setDetailsTab('overview');
       setShowDetailsModal(true);
-      setActionMenuOpen(null);
     } catch (error: any) {
       toast({ title: 'Load failed', description: error.response?.data?.message || 'Failed to load employee details.', variant: 'destructive' });
     }
@@ -556,7 +561,6 @@ const resetFormData = React.useCallback(() => {
       joinDate: emp.joinDate?.split('T')[0] || '',
     });
     setShowEditModal(true);
-    setActionMenuOpen(null);
   };
 
   const openPromoteModal = (emp: Employee) => {
@@ -567,20 +571,17 @@ const resetFormData = React.useCallback(() => {
       newSalary: emp.salary?.toString() || '',
     });
     setShowPromoteModal(true);
-    setActionMenuOpen(null);
   };
 
   const openAssignManagerModal = (emp: Employee) => {
     setSelectedEmployee(emp);
     setFormData((prev) => ({ ...prev, managerId: emp.manager?.id || '' }));
     setShowAssignManagerModal(true);
-    setActionMenuOpen(null);
   };
 
   const openDeleteConfirm = (emp: Employee) => {
     setSelectedEmployee(emp);
     setShowDeleteConfirm(true);
-    setActionMenuOpen(null);
   };
 
   const getRoleBadgeColor = (role: string) => {
@@ -966,180 +967,50 @@ const resetFormData = React.useCallback(() => {
                     </td>
                     {canManageEmployees && (
                       <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                        <div style={{ position: 'relative', display: 'inline-block' }}>
-                          <button
-                            onClick={() => setActionMenuOpen(actionMenuOpen === emp.id ? null : emp.id)}
-                            style={{
-                              padding: 8,
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              borderRadius: 8,
-                            }}
-                          >
-                            <MoreVertical style={{ width: 18, height: 18, color: '#6b7280' }} />
-                          </button>
-                          {actionMenuOpen === emp.id && (
-                            <div style={{
-                              position: 'absolute',
-                              right: 0,
-                              top: '100%',
-                              background: '#fff',
-                              borderRadius: 12,
-                              boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
-                              minWidth: 180,
-                              zIndex: 50,
-                              overflow: 'hidden',
-                            }}>
-                              <button
-                                onClick={() => handleViewDetails(emp)}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 16px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  fontSize: 14,
-                                  color: '#7c3aed',
-                                  textAlign: 'left',
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f5f3ff')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                              >
-                                <Eye style={{ width: 16, height: 16 }} /> View Details
-                              </button>
-                              <button
-                                onClick={() => openEditModal(emp)}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 16px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  fontSize: 14,
-                                  color: '#374151',
-                                  textAlign: 'left',
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                              >
-                                <Edit style={{ width: 16, height: 16 }} /> Edit Details
-                              </button>
-                              {canManageEmployees && (
-                                <button
-                                  onClick={() => openPromoteModal(emp)}
-                                  style={{
-                                    width: '100%',
-                                    padding: '10px 16px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 10,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    fontSize: 14,
-                                    color: '#374151',
-                                    textAlign: 'left',
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                                >
-                                  <UserCog style={{ width: 16, height: 16 }} /> Promote / Change Role
-                                </button>
-                              )}
-                              <button
-                                onClick={() => openAssignManagerModal(emp)}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 16px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  fontSize: 14,
-                                  color: '#374151',
-                                  textAlign: 'left',
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                              >
-                                <Users style={{ width: 16, height: 16 }} /> Assign Manager
-                              </button>
-                              <button
-                                onClick={() => handleResetPassword(emp)}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 16px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 10,
-                                  background: 'transparent',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  fontSize: 14,
-                                  color: '#374151',
-                                  textAlign: 'left',
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                              >
-                                <Key style={{ width: 16, height: 16 }} /> Reset Password
-                              </button>
-                              <div style={{ height: 1, background: '#e5e7eb', margin: '4px 0' }} />
-                              {emp.user.isActive ? (
-                                <button
-                                  onClick={() => openDeleteConfirm(emp)}
-                                  style={{
-                                    width: '100%',
-                                    padding: '10px 16px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 10,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    fontSize: 14,
-                                    color: '#dc2626',
-                                    textAlign: 'left',
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                                >
-                                  <Trash2 style={{ width: 16, height: 16 }} /> Deactivate
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => { handleReactivate(emp); setActionMenuOpen(null); }}
-                                  style={{
-                                    width: '100%',
-                                    padding: '10px 16px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 10,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    fontSize: 14,
-                                    color: '#059669',
-                                    textAlign: 'left',
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.background = '#ecfdf5')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                                >
-                                  <RefreshCw style={{ width: 16, height: 16 }} /> Reactivate
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              style={{
+                                padding: 8,
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                borderRadius: 8,
+                              }}
+                            >
+                              <MoreVertical style={{ width: 18, height: 18, color: '#6b7280' }} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" style={{ zIndex: 10002, minWidth: 180 }}>
+                            <DropdownMenuItem onSelect={() => handleViewDetails(emp)} style={{ color: '#7c3aed', gap: 10 }}>
+                              <Eye style={{ width: 16, height: 16 }} /> View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openEditModal(emp)} style={{ gap: 10 }}>
+                              <Edit style={{ width: 16, height: 16 }} /> Edit Details
+                            </DropdownMenuItem>
+                            {canManageEmployees && (
+                              <DropdownMenuItem onSelect={() => openPromoteModal(emp)} style={{ gap: 10 }}>
+                                <UserCog style={{ width: 16, height: 16 }} /> Promote / Change Role
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onSelect={() => openAssignManagerModal(emp)} style={{ gap: 10 }}>
+                              <Users style={{ width: 16, height: 16 }} /> Assign Manager
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handleResetPassword(emp)} style={{ gap: 10 }}>
+                              <Key style={{ width: 16, height: 16 }} /> Reset Password
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {emp.user.isActive ? (
+                              <DropdownMenuItem onSelect={() => openDeleteConfirm(emp)} style={{ color: '#dc2626', gap: 10 }}>
+                                <Trash2 style={{ width: 16, height: 16 }} /> Deactivate
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onSelect={() => handleReactivate(emp)} style={{ color: '#059669', gap: 10 }}>
+                                <RefreshCw style={{ width: 16, height: 16 }} /> Reactivate
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     )}
                   </tr>
@@ -2808,13 +2679,7 @@ const resetFormData = React.useCallback(() => {
         </DialogContent>
       </Dialog>
 
-      {/* Click outside handler for action menu */}
-      {actionMenuOpen && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-          onClick={() => setActionMenuOpen(null)}
-        />
-      )}
+
     </DashboardLayout>
   );
 }

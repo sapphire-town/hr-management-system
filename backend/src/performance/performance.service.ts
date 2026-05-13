@@ -70,9 +70,17 @@ export class PerformanceService {
   }
 
   private async getWorkingDaysCount(startDate: Date, endDate: Date): Promise<number> {
+    const effectiveEnd = endDate > new Date() ? new Date() : endDate;
+    if (effectiveEnd < startDate) return 0;
     const configuredWorkingDays = await this.getConfiguredWorkingDays();
-    const days = eachDayOfInterval({ start: startDate, end: endDate });
-    return days.filter(day => configuredWorkingDays.includes(day.getDay())).length;
+    const holidays = await this.prisma.officialHoliday.findMany({
+      where: { date: { gte: startDate, lte: effectiveEnd } },
+    });
+    const holidayDates = new Set(holidays.map(h => h.date.toISOString().slice(0, 10)));
+    const days = eachDayOfInterval({ start: startDate, end: effectiveEnd });
+    return days.filter(
+      day => configuredWorkingDays.includes(day.getDay()) && !holidayDates.has(day.toISOString().slice(0, 10)),
+    ).length;
   }
 
   private calculateAttendanceScore(present: number, halfDays: number, workingDays: number): number {
@@ -95,14 +103,41 @@ export class PerformanceService {
   private calculateOverallScore(
     attendanceScore: number,
     leaveScore: number,
-    taskCompletionScore: number = 85, // Default if no task data
+    taskCompletionScore: number,
   ): number {
-    // Weighted average: Attendance 40%, Leave Management 30%, Task Completion 30%
     return Math.round(
       attendanceScore * 0.4 +
       leaveScore * 0.3 +
       taskCompletionScore * 0.3
     );
+  }
+
+  private extractParamValue(data: any, key: string): number {
+    if (!data || data[key] === undefined || data[key] === null) return 0;
+    const val = data[key];
+    if (typeof val === 'number') return val;
+    if (typeof val === 'object' && val.value !== undefined) return Number(val.value) || 0;
+    return Number(val) || 0;
+  }
+
+  private calcDailyReportScore(
+    reports: { reportData: any }[],
+    params: { key: string; target?: number; type?: string }[],
+    workingDays: number,
+  ): number {
+    const numericParams = params.filter(p => p.type !== 'text' && (p.target ?? 0) > 0);
+    if (numericParams.length === 0 || workingDays === 0) return 0;
+
+    const paramScores = numericParams.map(param => {
+      const totalActual = reports.reduce(
+        (sum, r) => sum + this.extractParamValue(r.reportData, param.key),
+        0,
+      );
+      const totalTarget = param.target! * workingDays;
+      return Math.min(100, (totalActual / totalTarget) * 100);
+    });
+
+    return Math.round(paramScores.reduce((a, b) => a + b, 0) / paramScores.length);
   }
 
   private determineTrend(currentScore: number, previousScore: number): 'up' | 'down' | 'stable' {
@@ -144,7 +179,7 @@ export class PerformanceService {
       where: { id: employeeId },
       include: {
         user: { select: { email: true, role: true } },
-        role: true,
+        role: { select: { name: true, dailyReportingParams: true } },
       },
     });
 
@@ -152,32 +187,14 @@ export class PerformanceService {
       throw new Error('Employee not found');
     }
 
-    // Get attendance data
+    const roleParams = (employee.role?.dailyReportingParams as any[]) || [];
+
+    // Get attendance data (kept as informational fields)
     const attendanceRecords = await this.prisma.attendance.findMany({
-      where: {
-        employeeId,
-        date: { gte: start, lte: end },
-      },
+      where: { employeeId, date: { gte: start, lte: end } },
     });
 
-    // Get leave data
-    const leaveRecords = await this.prisma.leave.findMany({
-      where: {
-        employeeId,
-        status: 'APPROVED',
-        startDate: { lte: end },
-        endDate: { gte: start },
-      },
-    });
-
-    // Get holidays in range
-    const holidays = await this.prisma.officialHoliday.findMany({
-      where: {
-        date: { gte: start, lte: end },
-      },
-    });
-
-    const workingDays = await this.getWorkingDaysCount(start, end) - holidays.length;
+    const workingDays = await this.getWorkingDaysCount(start, end);
 
     const presentDays = attendanceRecords.filter(a => a.status === 'PRESENT').length;
     const halfDays = attendanceRecords.filter(a => a.status === 'HALF_DAY').length;
@@ -186,39 +203,38 @@ export class PerformanceService {
     ).length;
     const leaveDays = attendanceRecords.filter(a => a.status === 'PAID_LEAVE').length;
 
-    // Get ticket data for task completion score
-    const tickets = await this.prisma.ticket.findMany({
-      where: {
-        assignedTo: employeeId,
-        createdAt: { gte: start, lte: end },
-      },
-    });
-
-    const resolvedTickets = tickets.filter(t => t.status === 'RESOLVED').length;
-    const totalTickets = tickets.length;
-    const taskCompletionScore = totalTickets > 0
-      ? Math.round((resolvedTickets / totalTickets) * 100)
-      : 0; // Default score if no tickets
-
     const attendanceScore = this.calculateAttendanceScore(presentDays, halfDays, workingDays);
     const leaveScore = this.calculateLeaveScore(leaveDays, workingDays);
-    const overallScore = this.calculateOverallScore(attendanceScore, leaveScore, taskCompletionScore);
 
-    // Get previous period score for trend
-    const previousStart = subMonths(start, 1);
-    const previousEnd = subMonths(end, 1);
-    const previousAttendance = await this.prisma.attendance.findMany({
-      where: {
-        employeeId,
-        date: { gte: previousStart, lte: previousEnd },
-      },
+    // taskCompletionScore = average of (actual/target) across all numeric daily report params
+    const dailyReports = await this.prisma.dailyReport.findMany({
+      where: { employeeId, reportDate: { gte: start, lte: end } },
+      select: { reportData: true },
     });
 
+    const taskCompletionScore = this.calcDailyReportScore(dailyReports, roleParams, workingDays);
+    const overallScore = this.calculateOverallScore(attendanceScore, leaveScore, taskCompletionScore);
+
+    // Previous period score for trend
+    const previousStart = subMonths(start, 1);
+    const previousEnd = subMonths(end, 1);
     const prevWorkingDays = await this.getWorkingDaysCount(previousStart, previousEnd);
-    const prevPresent = previousAttendance.filter(a => a.status === 'PRESENT').length;
-    const prevHalfDays = previousAttendance.filter(a => a.status === 'HALF_DAY').length;
-    const prevAttendanceScore = this.calculateAttendanceScore(prevPresent, prevHalfDays, prevWorkingDays);
-    const previousScore = this.calculateOverallScore(prevAttendanceScore, 80, 85);
+    const [prevAttendance, prevDailyReports] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: { employeeId, date: { gte: previousStart, lte: previousEnd } },
+      }),
+      this.prisma.dailyReport.findMany({
+        where: { employeeId, reportDate: { gte: previousStart, lte: previousEnd } },
+        select: { reportData: true },
+      }),
+    ]);
+    const prevAttendanceScore = this.calculateAttendanceScore(
+      prevAttendance.filter(a => a.status === 'PRESENT').length,
+      prevAttendance.filter(a => a.status === 'HALF_DAY').length,
+      prevWorkingDays,
+    );
+    const prevTaskScore = this.calcDailyReportScore(prevDailyReports, roleParams, prevWorkingDays);
+    const previousScore = this.calculateOverallScore(prevAttendanceScore, 80, prevTaskScore);
 
     return {
       employeeId,
@@ -227,7 +243,7 @@ export class PerformanceService {
       role: employee.user?.role || 'EMPLOYEE',
       overallScore,
       attendanceScore,
-      punctualityScore: attendanceScore, // Can be refined with check-in time data
+      punctualityScore: attendanceScore,
       leaveScore,
       taskCompletionScore,
       totalWorkingDays: workingDays,
@@ -418,56 +434,46 @@ export class PerformanceService {
     const employees = await this.prisma.employee.findMany({ select: { id: true } });
     const employeeCount = employees.length;
 
+    // Fetch all employees with their role params once
+    const allEmployees = await this.prisma.employee.findMany({
+      select: { id: true, role: { select: { dailyReportingParams: true } } },
+    });
+
     for (let i = months - 1; i >= 0; i--) {
       const monthStart = startOfMonth(subMonths(now, i));
       const monthEnd = endOfMonth(subMonths(now, i));
       const workingDays = await this.getWorkingDaysCount(monthStart, monthEnd);
-      const groupedAttendance = await this.prisma.attendance.groupBy({
-        by: ['employeeId', 'status'],
-        where: {
-          date: { gte: monthStart, lte: monthEnd },
-        },
-        _count: { _all: true },
+
+      // Fetch all daily reports for this month grouped by employee
+      const monthReports = await this.prisma.dailyReport.findMany({
+        where: { reportDate: { gte: monthStart, lte: monthEnd } },
+        select: { employeeId: true, reportData: true },
       });
 
-      const attendanceByEmployee = new Map<
-        string,
-        { present: number; halfDay: number; total: number }
-      >();
-
-      for (const row of groupedAttendance) {
-        const current = attendanceByEmployee.get(row.employeeId) || {
-          present: 0,
-          halfDay: 0,
-          total: 0,
-        };
-
-        current.total += row._count._all;
-        if (row.status === 'PRESENT') {
-          current.present += row._count._all;
-        } else if (row.status === 'HALF_DAY') {
-          current.halfDay += row._count._all;
-        }
-        attendanceByEmployee.set(row.employeeId, current);
+      const reportsByEmployee = new Map<string, { reportData: any }[]>();
+      for (const r of monthReports) {
+        const arr = reportsByEmployee.get(r.employeeId) || [];
+        arr.push({ reportData: r.reportData });
+        reportsByEmployee.set(r.employeeId, arr);
       }
 
       let totalScore = 0;
-      let totalAttendanceRate = 0;
       let validEmployees = 0;
 
-      for (const summary of attendanceByEmployee.values()) {
-        if (summary.total <= 0) continue;
-        const attendanceScore = this.calculateAttendanceScore(summary.present, summary.halfDay, workingDays);
-        const score = this.calculateOverallScore(attendanceScore, 80, 85);
-        totalScore += score;
-        totalAttendanceRate += attendanceScore;
-        validEmployees++;
+      for (const emp of allEmployees) {
+        const params = (emp.role?.dailyReportingParams as any[]) || [];
+        const reports = reportsByEmployee.get(emp.id) || [];
+        const score = this.calcDailyReportScore(reports, params, workingDays);
+        if (score > 0) {
+          totalScore += score;
+          validEmployees++;
+        }
       }
 
       trends.push({
         date: format(monthStart, 'MMM yyyy'),
         score: validEmployees > 0 ? Math.round(totalScore / validEmployees) : 0,
-        attendanceRate: validEmployees > 0 ? Math.round(totalAttendanceRate / validEmployees) : 0,
+        attendanceRate: 0,
         employeeCount,
       });
     }
@@ -553,30 +559,30 @@ export class PerformanceService {
     const trends: PerformanceTrendDto[] = [];
     const now = new Date();
 
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { role: { select: { dailyReportingParams: true } } },
+    });
+    const roleParams = (employee?.role?.dailyReportingParams as any[]) || [];
+
     for (let i = months - 1; i >= 0; i--) {
       const monthStart = startOfMonth(subMonths(now, i));
       const monthEnd = endOfMonth(subMonths(now, i));
 
-      const attendance = await this.prisma.attendance.findMany({
-        where: {
-          employeeId,
-          date: { gte: monthStart, lte: monthEnd },
-        },
+      const dailyReports = await this.prisma.dailyReport.findMany({
+        where: { employeeId, reportDate: { gte: monthStart, lte: monthEnd } },
+        select: { reportData: true },
       });
 
       const workingDays = await this.getWorkingDaysCount(monthStart, monthEnd);
-      const present = attendance.filter(a => a.status === 'PRESENT').length;
-      const halfDays = attendance.filter(a => a.status === 'HALF_DAY').length;
-      const leaves = attendance.filter(a => a.status === 'PAID_LEAVE').length;
-
-      const attendanceScore = this.calculateAttendanceScore(present, halfDays, workingDays);
-      const leaveScore = this.calculateLeaveScore(leaves, workingDays);
-      const score = this.calculateOverallScore(attendanceScore, leaveScore, 0);
+      const score = dailyReports.length > 0
+        ? this.calcDailyReportScore(dailyReports, roleParams, workingDays)
+        : 0;
 
       trends.push({
         date: format(monthStart, 'MMM yyyy'),
         score,
-        attendanceRate: attendanceScore,
+        attendanceRate: 0,
         employeeCount: 1,
       });
     }

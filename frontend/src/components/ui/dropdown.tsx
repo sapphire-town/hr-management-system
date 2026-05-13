@@ -70,7 +70,7 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       style={{
-        zIndex: 50,
+        zIndex: 10002,
         minWidth: '8rem',
         overflow: 'hidden',
         borderRadius: '12px',
