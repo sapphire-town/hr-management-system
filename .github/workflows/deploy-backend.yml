@@ -64,32 +64,22 @@ jobs:
             IMAGE_TAG=${{ github.sha }}
             BACKEND_REPO="${{ env.ECR_REPOSITORY }}"
             
-            BACKEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:$IMAGE_TAG"
-            
             # Login to ECR
             aws ecr get-login-password --region "$AWS_REGION" | \
               docker login --username AWS --password-stdin \
               "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
             
-            # Pull latest
-            docker pull "$BACKEND_IMAGE"
+            # Set image env var for docker-compose
+            export BACKEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:$IMAGE_TAG"
             
-            # Stop and remove old container
-            docker rm -f hr-backend || true
+            # Change to project directory
+            cd ~/Project
             
-            # Create network if not exists
-            docker network create hr-net || true
+            # Pull and deploy using docker-compose
+            docker compose -f docker-compose.backend.yml pull
+            docker compose -f docker-compose.backend.yml up -d
             
-            # Run new container
-            docker run -d \
-              --name hr-backend \
-              --restart unless-stopped \
-              --network hr-net \
-              --env-file ~/.env \
-              -p 3001:3001 \
-              "$BACKEND_IMAGE"
-            
-            echo "Backend deployed successfully"
+            echo "Backend deployed successfully with image: $BACKEND_IMAGE"
 
       - name: Notify on failure
         if: failure()

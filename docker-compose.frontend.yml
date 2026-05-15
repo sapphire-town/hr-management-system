@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  hr-frontend:
+    image: ${FRONTEND_IMAGE}
+    container_name: hr-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - hr-net
+
+networks:
+  hr-net:
+    driver: bridge

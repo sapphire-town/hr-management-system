@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  hr-backend:
+    image: ${BACKEND_IMAGE}
+    container_name: hr-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    networks:
+      - hr-net
+    env_file:
+      - .env
+
+networks:
+  hr-net:
+    driver: bridge
