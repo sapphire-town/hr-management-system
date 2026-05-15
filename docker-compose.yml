@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   hr-backend:
-    image: ${BACKEND_IMAGE}
+    image: ${BACKEND_IMAGE:-469049066557.dkr.ecr.ap-south-1.amazonaws.com/cpb/hr-management-backend:latest}
     container_name: hr-backend
     restart: unless-stopped
     ports:
@@ -13,13 +11,13 @@ services:
       - hr-net
 
   hr-frontend:
-    image: ${FRONTEND_IMAGE}
+    image: ${FRONTEND_IMAGE:-469049066557.dkr.ecr.ap-south-1.amazonaws.com/cpb/hr-management-frontend:latest}
     container_name: hr-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://hr-api.careerplanb.in}
     networks:
       - hr-net
 
