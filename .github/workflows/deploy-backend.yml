@@ -68,17 +68,17 @@ jobs:
             aws ecr get-login-password --region "$AWS_REGION" | \
               docker login --username AWS --password-stdin \
               "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-            
+
             # Set image env var for docker-compose
             export BACKEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:$IMAGE_TAG"
-            
+
             # Change to project directory
             cd ~/Project
-            
-            # Pull and deploy using docker-compose
-            docker compose -f docker-compose.backend.yml pull
-            docker compose -f docker-compose.backend.yml up -d
-            
+
+            # Pull and deploy using single docker-compose.yml
+            docker compose -f docker-compose.yml pull hr-backend || true
+            docker compose -f docker-compose.yml up -d hr-backend
+
             echo "Backend deployed successfully with image: $BACKEND_IMAGE"
 
       - name: Notify on failure

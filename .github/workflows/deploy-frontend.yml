@@ -70,17 +70,18 @@ jobs:
             aws ecr get-login-password --region "$AWS_REGION" | \
               docker login --username AWS --password-stdin \
               "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-            
-            # Set image env var for docker-compose
+
+            # Set image env var for docker-compose and runtime API URL
             export FRONTEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:$IMAGE_TAG"
-            
+            export NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}"
+
             # Change to project directory
             cd ~/Project
-            
-            # Pull and deploy using docker-compose
-            docker compose -f docker-compose.frontend.yml pull
-            docker compose -f docker-compose.frontend.yml up -d
-            
+
+            # Pull and deploy using single docker-compose.yml
+            docker compose -f docker-compose.yml pull hr-frontend || true
+            docker compose -f docker-compose.yml up -d hr-frontend
+
             echo "Frontend deployed successfully with image: $FRONTEND_IMAGE"
 
       - name: Notify on failure
