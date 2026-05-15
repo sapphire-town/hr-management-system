@@ -73,6 +73,7 @@ export const employeeAPI = {
   resetPassword: (id: string) => apiClient.post(`/employees/${id}/reset-password`),
   reactivate: (id: string) => apiClient.post(`/employees/${id}/reactivate`),
   delete: (id: string) => apiClient.delete(`/employees/${id}`),
+  hardDelete: (id: string) => apiClient.delete(`/employees/${id}/permanent`),
   toggleInterviewer: (id: string, isInterviewer: boolean) =>
     apiClient.patch(`/employees/${id}/toggle-interviewer`, { isInterviewer }),
   initializeLeaveBalances: () => apiClient.post('/employees/admin/initialize-leave-balances'),

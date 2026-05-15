@@ -117,7 +117,8 @@ export default function EmployeesPage() {
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [filterRole, setFilterRole] = React.useState<string>('');
-  const [filterStatus, setFilterStatus] = React.useState<string>('');
+  const [showArchived, setShowArchived] = React.useState(false);
+  const [showHardDeleteConfirm, setShowHardDeleteConfirm] = React.useState(false);
 
 
   
@@ -193,7 +194,7 @@ export default function EmployeesPage() {
     try {
       setLoading(true);
       const [employeesRes, rolesRes] = await Promise.all([
-        employeeAPI.getAll({ limit: 100 }),
+        employeeAPI.getAll({ limit: 100, status: showArchived ? 'inactive' : 'active' }),
         roleAPI.getAll(),
       ]);
       setEmployees(employeesRes.data.data || []);
@@ -208,7 +209,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, [canManageEmployees]);
+  }, [canManageEmployees, showArchived]);
 
   React.useEffect(() => {
     fetchData();
@@ -249,14 +250,10 @@ export default function EmployeesPage() {
         emp.role?.name.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesRole = !filterRole || emp.role?.id === filterRole;
-      const matchesStatus =
-        !filterStatus ||
-        (filterStatus === 'active' && emp.user.isActive) ||
-        (filterStatus === 'inactive' && !emp.user.isActive);
 
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesSearch && matchesRole;
     });
-  }, [employees, searchQuery, filterRole, filterStatus]);
+  }, [employees, searchQuery, filterRole]);
 
 const resetFormData = React.useCallback(() => {
   setFormData({
@@ -438,6 +435,22 @@ const resetFormData = React.useCallback(() => {
       fetchData();
     } catch (error: any) {
       toast({ title: 'Reactivate failed', description: error.response?.data?.message || 'Failed to reactivate employee.', variant: 'destructive' });
+    }
+  };
+
+  const handleHardDelete = async () => {
+    if (!selectedEmployee) return;
+    try {
+      setSubmitting(true);
+      await employeeAPI.hardDelete(selectedEmployee.id);
+      setShowHardDeleteConfirm(false);
+      setSelectedEmployee(null);
+      fetchData();
+      toast({ title: 'Employee permanently deleted', variant: 'destructive' });
+    } catch (error: any) {
+      toast({ title: 'Delete failed', description: error.response?.data?.message || 'Failed to delete employee.', variant: 'destructive' });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -839,22 +852,36 @@ const resetFormData = React.useCallback(() => {
               <option key={role.id} value={role.id}>{role.name}</option>
             ))}
           </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            style={{
-              padding: '10px 12px',
-              border: '1px solid #e5e7eb',
-              borderRadius: 8,
-              fontSize: 14,
-              background: '#fff',
-              minWidth: 120,
-            }}
-          >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          {canManageEmployees && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none', fontSize: 14, color: '#374151', whiteSpace: 'nowrap' }}>
+              <div
+                onClick={() => setShowArchived((v) => !v)}
+                style={{
+                  position: 'relative',
+                  width: 40,
+                  height: 22,
+                  borderRadius: 11,
+                  background: showArchived ? '#7c3aed' : '#d1d5db',
+                  transition: 'background 0.2s',
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{
+                  position: 'absolute',
+                  top: 3,
+                  left: showArchived ? 21 : 3,
+                  width: 16,
+                  height: 16,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  transition: 'left 0.2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }} />
+              </div>
+              Show Deactivated Employees
+            </label>
+          )}
         </div>
 
         {/* Employee Table */}
@@ -1000,14 +1027,20 @@ const resetFormData = React.useCallback(() => {
                               <Key style={{ width: 16, height: 16 }} /> Reset Password
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            {emp.user.isActive ? (
+                            {!showArchived ? (
                               <DropdownMenuItem onSelect={() => openDeleteConfirm(emp)} style={{ color: '#dc2626', gap: 10 }}>
                                 <Trash2 style={{ width: 16, height: 16 }} /> Deactivate
                               </DropdownMenuItem>
                             ) : (
-                              <DropdownMenuItem onSelect={() => handleReactivate(emp)} style={{ color: '#059669', gap: 10 }}>
-                                <RefreshCw style={{ width: 16, height: 16 }} /> Reactivate
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem onSelect={() => handleReactivate(emp)} style={{ color: '#059669', gap: 10 }}>
+                                  <RefreshCw style={{ width: 16, height: 16 }} /> Reactivate
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onSelect={() => { setSelectedEmployee(emp); setShowHardDeleteConfirm(true); }} style={{ color: '#dc2626', gap: 10 }}>
+                                  <Trash2 style={{ width: 16, height: 16 }} /> Delete Permanently
+                                </DropdownMenuItem>
+                              </>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1038,7 +1071,7 @@ const resetFormData = React.useCallback(() => {
               />
             </div>
             <div>
-              <Label>Role *</Label>
+              <Label>Access Level *</Label>
               <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
                 <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                 <SelectContent>
@@ -1063,7 +1096,7 @@ const resetFormData = React.useCallback(() => {
               />
             </div>
             <div>
-              <Label>Department</Label>
+              <Label>Role</Label>
               {roles.length > 0 ? (
                 <Select value={formData.roleId || 'none'} onValueChange={(v) => setFormData({ ...formData, roleId: v === 'none' ? '' : v })}>
                   <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
@@ -1469,7 +1502,7 @@ const resetFormData = React.useCallback(() => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Modal */}
+      {/* Archive Confirmation Modal */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -1485,6 +1518,27 @@ const resetFormData = React.useCallback(() => {
             <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteEmployee} disabled={submitting}>
               {submitting ? 'Deactivating...' : 'Deactivate'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Permanent Delete Confirmation Modal */}
+      <Dialog open={showHardDeleteConfirm} onOpenChange={setShowHardDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Permanently Delete Employee</DialogTitle>
+          </DialogHeader>
+          <div style={{ padding: '16px 0' }}>
+            <p>Are you sure you want to permanently delete <strong>{selectedEmployee?.firstName} {selectedEmployee?.lastName}</strong>?</p>
+            <p style={{ fontSize: 13, color: '#dc2626', marginTop: 8, fontWeight: 500 }}>
+              This will permanently delete the employee and ALL their data including attendance records, daily reports, documents, and payslips. This cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHardDeleteConfirm(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleHardDelete} disabled={submitting}>
+              {submitting ? 'Deleting...' : 'Delete Permanently'}
             </Button>
           </DialogFooter>
         </DialogContent>

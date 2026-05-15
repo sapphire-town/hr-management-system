@@ -162,12 +162,15 @@ export class EmployeeService {
       where.employeeType = filters.employeeType;
     }
 
-    // Filter by active status
-    if (filters.status && filters.status !== 'all') {
-      where.user = {
-        ...where.user,
-        isActive: filters.status === 'active',
-      };
+    // Filter by active status — default to active only
+    const isActiveFilter =
+      filters.status === 'inactive' || filters.status === 'false'
+        ? false
+        : filters.status === 'all'
+          ? undefined
+          : true;
+    if (isActiveFilter !== undefined) {
+      where.user = { ...where.user, isActive: isActiveFilter };
     }
 
     const orderBy: any = {};
@@ -513,6 +516,20 @@ export class EmployeeService {
     });
 
     return { message: 'Employee deactivated successfully' };
+  }
+
+  async hardDelete(id: string): Promise<void> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    await this.prisma.employee.delete({ where: { id } });
+    await this.prisma.user.delete({ where: { id: employee.userId } });
   }
 
   async getTeam(managerId: string) {

@@ -185,6 +185,13 @@ export class EmployeeController {
     return this.employeeService.delete(id);
   }
 
+  @Delete(':id/permanent')
+  @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
+  @ApiOperation({ summary: 'Permanently delete employee and all their data' })
+  async hardDelete(@Param('id') id: string) {
+    return this.employeeService.hardDelete(id);
+  }
+
   @Patch(':id/promote')
   @Roles(UserRole.DIRECTOR, UserRole.HR_HEAD)
   @ApiOperation({ summary: 'Promote employee to new role' })
