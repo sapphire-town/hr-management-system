@@ -69,10 +69,10 @@ interface LeaveBalance {
   employeeId: string;
   name: string;
   role: string;
-  sickBalance: number;
-  casualBalance: number;
-  earnedBalance: number;
-  totalBalance: number;
+  sick: number;
+  casual: number;
+  earned: number;
+  total: number;
   consecutiveWorkingDays: number;
 }
 
@@ -625,16 +625,16 @@ export default function PayrollPage() {
                           {balance.role}
                         </td>
                         <td style={{ padding: '16px 8px', textAlign: 'center', color: '#3b82f6', fontWeight: '500' }}>
-                          {balance.sickBalance}
+                          {balance.sick}
                         </td>
                         <td style={{ padding: '16px 8px', textAlign: 'center', color: '#7c3aed', fontWeight: '500' }}>
-                          {balance.casualBalance}
+                          {balance.casual}
                         </td>
                         <td style={{ padding: '16px 8px', textAlign: 'center', color: '#22c55e', fontWeight: '500' }}>
-                          {balance.earnedBalance}
+                          {balance.earned}
                         </td>
                         <td style={{ padding: '16px 8px', textAlign: 'center', fontWeight: '700', color: '#111827' }}>
-                          {balance.totalBalance}
+                          {balance.total}
                         </td>
                         <td style={{ padding: '16px 8px', textAlign: 'center', color: '#374151' }}>
                           {balance.consecutiveWorkingDays}
@@ -935,9 +935,9 @@ export default function PayrollPage() {
             {/* Current balances summary */}
             <div style={{ display: 'flex', gap: '12px' }}>
               {[
-                { label: 'Sick', value: adjustTarget.sickBalance, color: '#3b82f6' },
-                { label: 'Casual', value: adjustTarget.casualBalance, color: '#7c3aed' },
-                { label: 'Earned', value: adjustTarget.earnedBalance, color: '#22c55e' },
+                { label: 'Sick', value: adjustTarget.sick, color: '#3b82f6' },
+                { label: 'Casual', value: adjustTarget.casual, color: '#7c3aed' },
+                { label: 'Earned', value: adjustTarget.earned, color: '#22c55e' },
               ].map((item) => (
                 <div
                   key={item.label}
