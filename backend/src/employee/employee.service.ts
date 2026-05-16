@@ -521,15 +521,61 @@ export class EmployeeService {
   async hardDelete(id: string): Promise<void> {
     const employee = await this.prisma.employee.findUnique({
       where: { id },
-      include: { user: true },
+      include: {
+        user: true,
+        subordinates: { select: { id: true } },
+      },
     });
 
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
 
-    await this.prisma.employee.delete({ where: { id } });
-    await this.prisma.user.delete({ where: { id: employee.userId } });
+    // Check blocking dependencies and build a human-readable list
+    const blockers: string[] = [];
+
+    if (employee.subordinates.length > 0) {
+      blockers.push(`manages ${employee.subordinates.length} team member(s) — reassign their manager first`);
+    }
+
+    const [ticketCount, feedbackCount, hiringCount, interviewCount, evaluationCount, directorListCount] =
+      await Promise.all([
+        (this.prisma as any).ticket.count({
+          where: { OR: [{ createdBy: id }, { assignedTo: id }] },
+        }),
+        (this.prisma as any).feedback.count({ where: { fromId: id } }),
+        (this.prisma as any).hiringRequest.count({ where: { requestedBy: id } }),
+        (this.prisma as any).placementDriveInterviewer.count({ where: { interviewerId: id } }),
+        (this.prisma as any).roundEvaluation.count({ where: { evaluatorId: id } }),
+        (this.prisma as any).directorList.count({
+          where: { OR: [{ employeeId: id }, { nominatedBy: id }] },
+        }),
+      ]);
+
+    if (ticketCount > 0) blockers.push(`has ${ticketCount} ticket(s)`);
+    if (feedbackCount > 0) blockers.push(`has ${feedbackCount} feedback record(s)`);
+    if (hiringCount > 0) blockers.push(`has ${hiringCount} hiring request(s)`);
+    if (interviewCount > 0) blockers.push(`participated in ${interviewCount} placement drive(s)`);
+    if (evaluationCount > 0) blockers.push(`has ${evaluationCount} round evaluation(s)`);
+    if (directorListCount > 0) blockers.push(`appears in ${directorListCount} director list record(s)`);
+
+    if (blockers.length > 0) {
+      throw new BadRequestException(
+        `Cannot permanently delete this employee: ${blockers.join('; ')}.`,
+      );
+    }
+
+    try {
+      await this.prisma.employee.delete({ where: { id } });
+      await this.prisma.user.delete({ where: { id: employee.userId } });
+    } catch (error: any) {
+      if (error?.code === 'P2003') {
+        throw new BadRequestException(
+          'Cannot delete this employee due to related records in the database. Contact your administrator.',
+        );
+      }
+      throw error;
+    }
   }
 
   async getTeam(managerId: string) {
