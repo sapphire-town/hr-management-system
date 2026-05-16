@@ -67,7 +67,7 @@ interface WorkingDaysConfig {
 
 interface LeaveBalance {
   employeeId: string;
-  employeeName: string;
+  name: string;
   role: string;
   sickBalance: number;
   casualBalance: number;
@@ -619,7 +619,7 @@ export default function PayrollPage() {
                     {leaveBalances.map((balance) => (
                       <tr key={balance.employeeId} style={{ borderBottom: '1px solid #f3f4f6' }}>
                         <td style={{ padding: '16px 8px', fontWeight: '500', color: '#111827' }}>
-                          {balance.employeeName}
+                          {balance.name}
                         </td>
                         <td style={{ padding: '16px 8px', color: '#374151' }}>
                           {balance.role}
@@ -925,7 +925,7 @@ export default function PayrollPage() {
             {/* Target employee info */}
             <div style={{ padding: '14px', background: '#f9fafb', borderRadius: '10px' }}>
               <p style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#111827' }}>
-                {adjustTarget.employeeName}
+                {adjustTarget.name}
               </p>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#6b7280' }}>
                 {adjustTarget.role}
